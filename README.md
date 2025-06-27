@@ -36,26 +36,30 @@ Before running this program, ensure you have the following installed (the progra
 ## Installation
 
 Follow these steps in your Linux terminal to set up the project:
+   ```
+   git clone https://github.com/Mysteriza/handshakeCracker
+   ```
 
 1.  **Navigate to your Project Directory**:
-    If you've just downloaded the files, navigate to the `handshakeCracker` folder:
+
+    If you've just downloaded the files or clone the repo, navigate to the `handshakeCracker` folder:
     ```bash
     cd handshakeCracker
     ```
 
-2.  **Create a Virtual Environment**:
+3.  **Create a Virtual Environment**:
     This isolates the project's Python dependencies.
     ```bash
     python3 -m venv venv
     ```
 
-3.  **Activate the Virtual Environment**:
+4.  **Activate the Virtual Environment**:
     You will see `(venv)` appear at the beginning of your terminal prompt.
     ```bash
     source venv/bin/activate
     ```
 
-4.  **Install Python Dependencies**:
+5.  **Install Python Dependencies**:
     The program will attempt to auto-install `rich` and `prompt_toolkit` on first run if missing. However, you can also manually ensure they are installed within your active `venv`:
     ```bash
     pip install -r requirements.txt
