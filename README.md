@@ -12,14 +12,20 @@ A simple, robust, and user-friendly Python tool designed for auditing Wi-Fi netw
 * **Vibrant Console Output**: Features clear, concise, and colorful terminal output powered by the `rich` library, ensuring an easy-to-read and engaging user experience.
 * **Password Highlighting**: Successfully cracked passwords are clearly highlighted in the output for immediate visibility.
 
+## Screenshot
+![Screenshot 2025-06-27 211249](https://github.com/user-attachments/assets/eacda6e2-b307-42dc-9601-76fb768b051e)
+
+
 ## Prerequisites
 
 Before running this program, ensure you have the following installed (the program will automatically install all dependencies anyway):
 
 * **Operating System**: Kali Linux (recommended) or any other Debian/Ubuntu-based Linux distribution. This tool heavily relies on Linux-specific utilities.
 * **Aircrack-ng**: The core utility for cracking.
-    ```bash
+    ```
     sudo apt update
+    ```
+    ```
     sudo apt install aircrack-ng -y
     ```
 * **Python 3**: Python 3 and the `python3-venv` module are required.
@@ -52,23 +58,12 @@ Follow these steps in your Linux terminal to set up the project:
 4.  **Install Python Dependencies**:
     The program will attempt to auto-install `rich` and `prompt_toolkit` on first run if missing. However, you can also manually ensure they are installed within your active `venv`:
     ```bash
-    pip install rich prompt_toolkit
+    pip install -r requirements.txt
     ```
-    *(Note: If you have a `requirements.txt` file, you can also use `pip install -r requirements.txt`.)*
 
 ## Usage
 
-1.  **Prepare Your Wordlist**:
-    The program expects a file named `wifite.txt` in the same directory as `crack_handshake.py`. This file should contain a list of potential passwords, one password per line.
-    Example `wifite.txt` content:
-    ```
-    password123
-    qwerty
-    12345678
-    myhomewifi
-    ```
-
-2.  **Run the Program**:
+1.  **Run the Program**:
     Ensure you are in the project directory and your virtual environment is active (`(venv)` is visible in your prompt).
     ```bash
     python crack_handshake.py
