@@ -14,7 +14,7 @@ A simple, robust, and user-friendly Python tool designed for auditing Wi-Fi netw
 
 ## Prerequisites
 
-Before running this program, ensure you have the following installed:
+Before running this program, ensure you have the following installed (the program will automatically install all dependencies anyway):
 
 * **Operating System**: Kali Linux (recommended) or any other Debian/Ubuntu-based Linux distribution. This tool heavily relies on Linux-specific utilities.
 * **Aircrack-ng**: The core utility for cracking.
@@ -32,9 +32,9 @@ Before running this program, ensure you have the following installed:
 Follow these steps in your Linux terminal to set up the project:
 
 1.  **Navigate to your Project Directory**:
-    If you've just downloaded the files, navigate to the `wifi_cracker_project` folder:
+    If you've just downloaded the files, navigate to the `handshakeCracker` folder:
     ```bash
-    cd wifi_cracker_project
+    cd handshakeCracker
     ```
 
 2.  **Create a Virtual Environment**:
