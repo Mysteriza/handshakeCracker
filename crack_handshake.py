@@ -28,7 +28,12 @@ except ImportError:
         sys.exit(1)
 
 console = Console()
-ERROR_LOG_FILE = "error_log.txt"
+# Generate timestamped error log filename once at startup
+def get_error_log_filename():
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"error_log_{timestamp}.txt"
+
+ERROR_LOG_FILE = get_error_log_filename()
 
 def log_error(message: str, error: Exception = None):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -38,8 +43,8 @@ def log_error(message: str, error: Exception = None):
     
     with open(ERROR_LOG_FILE, "a") as f:
         f.write(log_message + "\n")
-    colored_log("error", f"An error occurred. Details logged to {ERROR_LOG_FILE}")
-    if error:
+    if error: # Only print general error message to console if it's a code-level exception
+        colored_log("error", f"An error occurred. Details logged to {ERROR_LOG_FILE}")
         console.print_exception(show_locals=False)
 
 def colored_log(level: str, message: str):
@@ -85,72 +90,221 @@ def check_dependency(tool_name: str) -> bool:
 def sanitize_ssid(ssid: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", ssid).replace(" ", "_").strip()
 
+def get_essid_from_file_analysis(cap_file: str) -> str:
+    """Attempts to extract ESSID from a .cap file's aircrack-ng analysis output for display."""
+    essid = os.path.basename(cap_file).replace(".cap", "").replace(".pcap", "") # Default to filename
+    try:
+        result = execute_command(["aircrack-ng", cap_file])
+        if result and result.stdout:
+            # Pattern to match "BSSID ESSID Encryption" line in summary
+            # Example: "DA:97:8D:FB:3E:BD   Hmmmmmmmm        WPA (1 handshake)"
+            essid_line_match = re.search(r"[\dA-Fa-f:]{17}\s*(.*?)\s+(?:WEP|WPA)", result.stdout)
+            if essid_line_match:
+                found_essid = essid_line_match.group(1).strip()
+                if found_essid != "" and found_essid != "<hidden>":
+                    return found_essid
+            
+            # Fallback to general ESSID pattern (e.g., from Summary section)
+            essid_match_summary = re.search(r"ESSID:\s*(.*?)(?:\s*\([\dA-Fa-f:]{17}\))?", result.stdout)
+            if essid_match_summary:
+                found_essid_summary = essid_match_summary.group(1).strip()
+                if found_essid_summary != "" and found_essid_summary != "<hidden>":
+                    return found_essid_summary
+            
+            if "ESSID: <hidden>" in result.stdout:
+                return "<hidden>"
+
+    except Exception as e:
+        log_error(f"Error extracting ESSID for display from {cap_file}", e)
+    
+    return essid # Return default (filename-based) if nothing found
+
 def _check_handshake(cap_file: str) -> bool:
     if not os.path.exists(cap_file):
         colored_log("error", f"Handshake file not found: {cap_file}. Please check the path.")
         return False
-    colored_log("info", f"Validating handshake in: [bold yellow]{os.path.basename(cap_file)}[/bold yellow]...")
-    
     try:
         result = execute_command(["aircrack-ng", cap_file])
         if result and "1 handshake" in result.stdout:
-            colored_log("success", "Handshake validation successful: At least one 4-way handshake found!")
             return True
         else:
-            colored_log("warning", "No valid 4-way handshake detected in this file.")
+            colored_log("error", f"No valid 4-way handshake detected in [bold yellow]{os.path.basename(cap_file)}[/bold yellow].")
             colored_log("info", "Please ensure the .cap/.pcap file contains a full WPA/WPA2 4-way handshake.")
             if result and result.stderr:
-                console.print(f"[dim]Aircrack-ng output (stderr):[/dim]\n[dim]{result.stderr}[/dim]", style="dim")
+                log_error(f"Aircrack-ng validation output for {os.path.basename(cap_file)}:\n{result.stderr}")
             return False
     except Exception as e:
         log_error(f"Error during handshake validation for {cap_file}", e)
         colored_log("error", "Failed to validate handshake due to an internal error.")
         return False
 
-def crack_password_from_handshake(handshake_path: str, wordlist_path: str) -> str | None:
+def parse_aircrack_failure_summary(output: str) -> dict:
+    """Parses aircrack-ng's raw output to extract key summary details on failure."""
+    parsed_info = {
+        "keys_tested": "N/A",
+        "time_left": "N/A",
+        "percentage": "N/A",
+        "current_passphrase": "N/A",
+        "master_key": "N/A",
+        "transient_key": "N/A",
+        "eapol_hmac": "N/A"
+    }
+
+    lines = output.splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        line = lines[i]
+
+        if "keys tested" in line and parsed_info["keys_tested"] == "N/A":
+            match = re.search(r"(\d+)/(\d+)\s+keys tested\s+\(([\d.]+ k/s)\)", line)
+            if match:
+                parsed_info["keys_tested"] = f"{match.group(1)}/{match.group(2)} keys tested ({match.group(3)})"
+            if i + 1 < len(lines):
+                time_percent_line = lines[i+1]
+                time_match = re.search(r"Time left:\s*(.*?)\s*([\d.]+\%)", time_percent_line)
+                if time_match:
+                    parsed_info["time_left"] = time_match.group(1).strip()
+                    parsed_info["percentage"] = time_match.group(2).strip()
+            continue
+
+        if "Current passphrase:" in line and parsed_info["current_passphrase"] == "N/A":
+            match = re.search(r"Current passphrase:\s*(.*)", line)
+            if match:
+                parsed_info["current_passphrase"] = match.group(1).strip()
+            continue
+
+        if "Master Key" in line and parsed_info["master_key"] == "N/A":
+            match = re.search(r"Master Key\s*:\s*(.*)", line)
+            if match:
+                key_hex = match.group(1).strip()
+                collected_key = [key_hex]
+                for j in range(i + 1, len(lines)):
+                    next_line = lines[j].strip()
+                    if re.match(r"([\dA-Fa-f]{2}(?:\s[\dA-Fa-f]{2})*){1,16}", next_line):
+                        collected_key.append(next_line)
+                    else:
+                        break
+                parsed_info["master_key"] = "\n    ".join(collected_key)
+            continue
+
+        if "Transient Key" in line and parsed_info["transient_key"] == "N/A":
+            match = re.search(r"Transient Key\s*:\s*(.*)", line)
+            if match:
+                key_hex = match.group(1).strip()
+                collected_key = [key_hex]
+                for j in range(i + 1, len(lines)):
+                    next_line = lines[j].strip()
+                    if re.match(r"([\dA-Fa-f]{2}(?:\s[\dA-Fa-f]{2})*){1,16}", next_line):
+                        collected_key.append(next_line)
+                    else:
+                        break
+                parsed_info["transient_key"] = "\n    ".join(collected_key)
+            continue
+
+        if "EAPOL HMAC" in line and parsed_info["eapol_hmac"] == "N/A":
+            match = re.search(r"EAPOL HMAC\s*:\s*(.*)", line)
+            if match:
+                parsed_info["eapol_hmac"] = match.group(1).strip()
+            continue
+    
+    return parsed_info
+
+def crack_password_from_handshake(handshake_path: str, wordlist_path: str, display_essid: str) -> str | None:
     colored_log("info", f"Using wordlist: [bold green]{os.path.basename(wordlist_path)}[/bold green]")
+    
+    result_stdout = ""
+    result_stderr = ""
+
     try:
+        progress_messages = [
+            f"Cracking {display_essid}... Analyzing handshake data...",
+            f"Processing {display_essid}... Searching for the key..."
+        ]
+        
+        current_message_index = 0
+        
         with Progress(
             SpinnerColumn("dots", style="bold magenta"),
             TextColumn("[progress.description]{task.description}"),
             transient=True,
             console=console
         ) as progress:
-            cracking_task = progress.add_task("[bold yellow]Cracking in progress[/bold yellow]...", total=None)
+            cracking_task = progress.add_task(f"[bold yellow]{progress_messages[current_message_index]}[/bold yellow]", total=None)
 
             start_time = time.time()
-            result = execute_command(["aircrack-ng", "-w", wordlist_path, handshake_path])
+            last_message_update_time = start_time
+
+            proc = subprocess.Popen(
+                ["aircrack-ng", "-w", wordlist_path, handshake_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding='utf-8',
+                errors='replace'
+            )
+            
+            full_stdout = []
+            full_stderr = []
+            
+            while True:
+                line = proc.stdout.readline()
+                if line:
+                    full_stdout.append(line)
+                    if "KEY FOUND!" in line:
+                        break 
+
+                current_time = time.time()
+                if current_time - last_message_update_time >= 2:
+                    current_message_index = (current_message_index + 1) % len(progress_messages)
+                    progress.update(cracking_task, description=f"[bold yellow]{progress_messages[current_message_index]}[/bold yellow]")
+                    last_message_update_time = current_time
+
+                if proc.poll() is not None:
+                    break
+
+                time.sleep(0.05)
+
+            remaining_stdout, remaining_stderr = proc.communicate()
+            full_stdout.append(remaining_stdout)
+            full_stderr.append(remaining_stderr)
+
+            result_stdout = "".join(full_stdout)
+            result_stderr = "".join(full_stderr)
 
             progress.remove_task(cracking_task)
 
-        if not result or result.returncode != 0 and "KEY FOUND!" not in result.stdout:
+        if proc.returncode != 0 and "KEY FOUND!" not in result_stdout:
             colored_log("error", "Aircrack-ng command failed or did not find a key.")
-            if result and result.stderr:
-                console.print(f"[dim]Aircrack-ng error output:[/dim]\n[dim]{result.stderr}[/dim]", style="dim")
+            log_error(f"Aircrack-ng command failed for {os.path.basename(handshake_path)}:\nStdout:\n{result_stdout}\nStderr:\n{result_stderr}")
             return None
 
-        if "KEY FOUND!" in result.stdout:
-            match = re.search(r"KEY FOUND!\s*\[\s*(.*?)\s*\]", result.stdout)
+        if "KEY FOUND!" in result_stdout:
+            match = re.search(r"KEY FOUND!\s*\[\s*(.*?)\s*\]", result_stdout)
             if match:
                 password = match.group(1)
                 elapsed_time = time.time() - start_time
                 minutes, seconds = divmod(int(elapsed_time), 60)
                 time_str = f"{minutes:02d}:{seconds:02d}"
 
-                essid_match = re.search(r"SSID:\s*(.*)", result.stdout)
-                network_essid = essid_match.group(1).strip() if essid_match else os.path.basename(handshake_path).replace(".cap", "").replace(".pcap", "")
+                essid_match = re.search(r"SSID:\s*(.*)", result_stdout)
+                final_network_essid = display_essid 
+                
+                if essid_match and essid_match.group(1).strip() != "" and essid_match.group(1).strip() != "<hidden>":
+                     final_network_essid = essid_match.group(1).strip()
+                elif final_network_essid == "<hidden>" or final_network_essid.endswith("_from_filename"): 
+                     final_network_essid = os.path.basename(handshake_path).replace(".cap", "").replace(".pcap", "") + "_determined_final"
+                
 
                 console.print("\n" + "[bold green]Password Found![/bold green] 🎉")
-                console.print(f"  [bold cyan]Network Name:[/bold cyan] [bold yellow]{network_essid}[/bold yellow]")
-                console.print(f"  [bold green]Password:[/bold green] [bold green]{password}[/bold green]") # Changed password to green, not highlighted
+                console.print(f"  [bold cyan]Network Name:[/bold cyan] [bold yellow]{final_network_essid}[/bold yellow]")
+                console.print(f"  [bold green]Password:[/bold green] [bold green]{password}[/bold green]")
                 console.print(f"  [bold blue]Time Taken:[/bold blue] {time_str}")
                 
                 results_dir = "cracked_results"
                 os.makedirs(results_dir, exist_ok=True)
-                safe_essid = sanitize_ssid(network_essid)
-                result_file = os.path.join(results_dir, f"{safe_essid}_cracked_password.txt")
+                sanitized_essid = sanitize_ssid(final_network_essid)
+                result_file = os.path.join(results_dir, f"{sanitized_essid}_cracked_password.txt")
                 with open(result_file, "w") as f:
-                    f.write(f"Network (ESSID): {network_essid}\n")
+                    f.write(f"Network (ESSID): {final_network_essid}\n")
                     f.write(f"Handshake File: {os.path.basename(handshake_path)}\n")
                     f.write(f"Wordlist Used: {os.path.basename(wordlist_path)}\n")
                     f.write(f"Password Found: {password}\n")
@@ -159,8 +313,6 @@ def crack_password_from_handshake(handshake_path: str, wordlist_path: str) -> st
                 return password
         else:
             colored_log("error", "Password not found in the wordlist. Consider trying a different or larger wordlist!")
-            if result:
-                console.print(f"[dim]Aircrack-ng raw output (for debugging):[/dim]\n[dim]{result.stdout}[/dim]", style="dim")
             return None
     except Exception as e:
         log_error(f"Critical error during cracking process for {handshake_path}", e)
@@ -170,20 +322,17 @@ def crack_password_from_handshake(handshake_path: str, wordlist_path: str) -> st
 class PcapValidator(Validator):
     def validate(self, document):
         text = document.text
-        if text.lower() in ['exit', 'q']:
+        if text.lower() == 'q' or text.lower() == 'done':
             return
+        
         if not os.path.exists(text):
-            raise ValidationError(
-                message="File not found!",
-                cursor_position=len(text)
-            )
+            raise ValidationError(message=f"File not found: {text}", cursor_position=len(text))
         if not (text.lower().endswith(".cap") or text.lower().endswith(".pcap")):
-            raise ValidationError(
-                message="Not a .cap or .pcap file!",
-                cursor_position=len(text)
-            )
+            raise ValidationError(message=f"Not a .cap or .pcap file: {text}", cursor_position=len(text))
 
 def main():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
     try:
         console.print(Panel(
             Text("✨ Wi-Fi Handshake Cracker ✨", justify="center", style="bold magenta"),
@@ -192,9 +341,8 @@ def main():
             padding=(1, 4)
         ))
         
-        # Simpler welcome/instruction messages and ensuring color for Ctrl+C
         console.print(Text("\nTest your Wi-Fi security by cracking captured handshakes. Use responsibly and with permission.", style="bold blue").wrap(console, width=console.width - 4))
-        console.print(Text.from_markup("Press [bold red]Ctrl+C[/bold red] to gracefully exit.", style="bold magenta")) # Fixed Ctrl+C rendering
+        console.print(Text.from_markup("Press [bold red]Ctrl+C[/bold red] to gracefully exit.", style="bold magenta"))
         console.print("-" * console.width, style="dim")
 
         if not check_dependency("aircrack-ng"):
@@ -203,28 +351,29 @@ def main():
 
         session = PromptSession(history=InMemoryHistory())
 
-        handshake_file_path = ""
+        handshake_queue = []
+        
+        console.print("\n[bold cyan]Please enter handshake file paths (.cap/.pcap) one by one.[/bold cyan]")
+        console.print("[dim]  (Type 'done' or 'q' to finish adding files. Use TAB for auto-completion.)[/dim]")
+        
         while True:
             try:
-                console.print("\n[bold cyan]Enter the full path to your handshake capture file (.cap/.pcap):[/bold cyan]")
-                console.print("[dim]  (Type 'exit'/'q' to quit. Use TAB for auto-completion.)[/dim]")
-                
-                handshake_file_path = session.prompt(
-                    "Path: ",
+                current_input_path = session.prompt(
+                    f"Handshake {len(handshake_queue) + 1} Path: ",
                     completer=PathCompleter(only_directories=False, expanduser=True),
                     validator=PcapValidator(),
                     validate_while_typing=True
                 ).strip()
 
-                if handshake_file_path.lower() in ['exit', 'q']:
-                    colored_log("info", "Exiting program as requested.")
-                    sys.exit(0)
-                
-                if os.path.exists(handshake_file_path) and \
-                   (handshake_file_path.lower().endswith(".cap") or handshake_file_path.lower().endswith(".pcap")):
-                    break
-                else:
-                    colored_log("error", "Invalid file path or format. Please ensure the file exists and is a .cap/.pcap file.")
+                if current_input_path.lower() in ['done', 'q']:
+                    if not handshake_queue:
+                        colored_log("warning", "No handshake files added. Exiting.")
+                        sys.exit(0)
+                    break 
+
+                handshake_queue.append(current_input_path)
+                colored_log("info", f"Added: [bold yellow]{os.path.basename(current_input_path)}[/bold yellow] to queue.")
+            
             except ValidationError as e:
                 colored_log("error", str(e))
             except EOFError:
@@ -235,6 +384,12 @@ def main():
                 colored_log("error", "An error occurred during file path input. Please try again or restart.")
                 time.sleep(1)
 
+        if not handshake_queue:
+            colored_log("warning", "No handshake files in queue. Exiting program.")
+            sys.exit(0)
+        
+        colored_log("info", f"\nProcessing {len(handshake_queue)} handshakes in queue...")
+        
         wordlist_name = "wifite.txt"
         wordlist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), wordlist_name)
 
@@ -245,19 +400,37 @@ def main():
         else:
             colored_log("info", f"Using wordlist: [bold green]{os.path.basename(wordlist_path)}[/bold green]")
 
-        if not _check_handshake(handshake_file_path):
-            colored_log("error", "Handshake validation failed. Cracking process aborted.")
-            sys.exit(1)
+        
+        for i, handshake_path in enumerate(handshake_queue):
+            console.print("\n" + "=" * console.width, style="bold blue")
+            colored_log("info", f"Processing Handshake {i+1}/{len(handshake_queue)}: [bold cyan]{os.path.basename(handshake_path)}[/bold cyan]")
+            
+            current_displayed_essid = get_essid_from_file_analysis(handshake_path)
+            if current_displayed_essid != os.path.basename(handshake_path).replace(".cap", "").replace(".pcap", ""):
+                 colored_log("info", f"Network ESSID: [bold yellow]{current_displayed_essid}[/bold yellow]")
+            else:
+                 colored_log("warning", f"Network ESSID: [yellow]{current_displayed_essid} (Could not auto-detect)[/yellow]")
+            
+            # Removed the separator here
+            # console.print("=" * console.width, style="bold blue")
 
-        colored_log("info", "Initiating password cracking. This might take a while depending on your wordlist and hardware.")
-        cracked_password = crack_password_from_handshake(handshake_file_path, wordlist_path)
+            if not _check_handshake(handshake_path):
+                colored_log("error", f"Validation failed for [bold red]{os.path.basename(handshake_path)}[/bold red]. Skipping to next handshake.")
+                console.print("-" * console.width, style="dim")
+                continue
 
-        if cracked_password:
-            colored_log("success", "Cracking process finished successfully!")
-        else:
-            console.print("\n" + "[bold red]Cracking Failed![/bold red] ❌")
-            console.print(Text("Password was not found in the provided wordlist.", style="yellow"))
-            colored_log("info", "Consider trying with a different or larger wordlist next time for better chances.")
+            colored_log("info", "Initiating password cracking. This might take a while depending on your wordlist and hardware.")
+            cracked_password = crack_password_from_handshake(handshake_path, wordlist_path, current_displayed_essid)
+
+            if cracked_password:
+                colored_log("success", "Cracking process finished successfully for this handshake!")
+            else:
+                colored_log("error", "Cracking process failed for this handshake.")
+            
+            console.print("-" * console.width, style="dim")
+
+        colored_log("success", "\nAll handshakes in queue have been processed!")
+        colored_log("info", "Program finished. Exiting.")
 
     except KeyboardInterrupt:
         colored_log("warning", "\nProgram interrupted by user (Ctrl+C). Exiting gracefully.")
