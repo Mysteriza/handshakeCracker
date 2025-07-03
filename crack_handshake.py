@@ -90,6 +90,28 @@ def check_dependency(tool_name: str) -> bool:
 def sanitize_ssid(ssid: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", ssid).replace(" ", "_").strip()
 
+# New function: get_already_cracked_essids
+def get_already_cracked_essids(results_dir="cracked_results") -> set[str]:
+    """
+    Scans the results directory for already cracked ESSIDs based on filenames.
+    Returns a set of sanitized ESSIDs found in result files.
+    """
+    cracked_essids = set()
+    if not os.path.exists(results_dir):
+        return cracked_essids # Return empty set if directory doesn't exist
+    
+    try:
+        for filename in os.listdir(results_dir):
+            if filename.endswith("_cracked_password.txt"):
+                # Extract ESSID from filename (e.g., "ESSID_cracked_password.txt")
+                # The ESSID in the filename is already sanitized
+                essid_part = filename.replace("_cracked_password.txt", "")
+                cracked_essids.add(essid_part)
+    except Exception as e:
+        log_error(f"Error scanning results directory {results_dir} for cracked ESSIDs.", e)
+    
+    return cracked_essids
+
 def get_essid_from_file_analysis(cap_file: str) -> str:
     """Attempts to extract ESSID from a .cap file's aircrack-ng analysis output for display."""
     essid = os.path.basename(cap_file).replace(".cap", "").replace(".pcap", "") # Default to filename
@@ -402,11 +424,9 @@ def main():
         handshake_queue = []
         
         # Input mode choice
-        def validate_input_mode_choice_value(text): # Renamed to avoid confusion with the validator object
+        def validate_input_mode_choice_value(text): 
             if text.lower() not in ['0', '1', '3']:
                 raise ValidationError(message="Please enter '0', '1', or '3'.", cursor_position=len(text))
-
-        input_mode_validator_callable = Validator.from_callable(validate_input_mode_choice_value, error_message="Please enter '0', '1', or '3'.")
 
         input_mode_choice = ""
         while input_mode_choice not in ['0', '1', '3']:
@@ -414,14 +434,15 @@ def main():
             console.print("[dim]  0. Auto (Use all .cap/.pcap files from 'handshakes' directory)[/dim]")
             console.print("[dim]  1. Manual (Enter custom path(s) one by one)[/dim]")
             console.print("[dim]  3. Exit program[/dim]")
-            input_mode_choice = input("Mode (0/1/3): ").strip().lower()
+            # Use standard input() for this simple choice, as per user's last request.
+            input_mode_choice = input("Mode (0/1/3): ").strip().lower() 
 
             try:
                 # Manually validate input from the raw input() function
-                # Validator.validate expects a Document object, not plain string directly from input()
-                # So we simply use the callable logic directly here.
+                # No need to use Validator object directly for validation as input() handles it
                 if input_mode_choice not in ['0', '1', '3']:
-                    colored_log("error", input_mode_validator_callable.error_message) # Print the error message
+                    # Use the error message directly from the validation logic
+                    colored_log("error", "Invalid input. Please enter '0', '1', or '3'.") 
                     input_mode_choice = "" # Reset to force loop continuation
             except Exception as e:
                 log_error("An unexpected error occurred during mode selection validation.", e)
@@ -451,8 +472,9 @@ def main():
             else:
                 handshake_queue.extend(found_files)
                 colored_log("success", f"Found {len(found_files)} .cap/.pcap files in [bold yellow]{default_handshakes_dir}[/bold yellow]. Added to queue.")
-                for f_path in found_files:
-                    colored_log("info", f"  - Added: [bold yellow]{os.path.basename(f_path)}[/bold yellow]")
+                # Removed printing each added file to keep terminal clean
+                # for f_path in found_files:
+                #    colored_log("info", f"  - Added: [bold yellow]{os.path.basename(f_path)}[/bold yellow]")
 
 
         if not handshake_queue:
@@ -471,12 +493,29 @@ def main():
         else:
             colored_log("info", f"Using wordlist: [bold green]{os.path.basename(wordlist_path)}[/bold green]")
 
+        # Get already cracked ESSIDs at startup
+        already_cracked_essids = get_already_cracked_essids()
+        if already_cracked_essids:
+            colored_log("info", f"Found {len(already_cracked_essids)} previously cracked network(s). These will be skipped if encountered again.")
+        
+        # Sort handshake queue by file size (largest to smallest)
+        handshake_queue.sort(key=lambda p: os.path.getsize(p), reverse=True)
+        colored_log("info", "Handshakes sorted by file size (largest first).")
+
         
         for i, handshake_path in enumerate(handshake_queue):
             console.print("\n" + "=" * console.width, style="bold blue")
             colored_log("info", f"Processing Handshake {i+1}/{len(handshake_queue)}: [bold cyan]{os.path.basename(handshake_path)}[/bold cyan]")
             
             current_displayed_essid = get_essid_from_file_analysis(handshake_path)
+            
+            # Check if already cracked
+            sanitized_current_essid = sanitize_ssid(current_displayed_essid)
+            if sanitized_current_essid in already_cracked_essids:
+                colored_log("warning", f"  Network ESSID: [yellow]{current_displayed_essid}[/yellow] already processed. Skipping.")
+                console.print("-" * console.width, style="dim")
+                continue # Skip to next handshake
+            
             if current_displayed_essid != os.path.basename(handshake_path).replace(".cap", "").replace(".pcap", ""):
                  colored_log("info", f"  Network ESSID: [bold yellow]{current_displayed_essid}[/bold yellow]")
             else:
@@ -492,8 +531,10 @@ def main():
 
             if cracked_password:
                 colored_log("success", "Cracking process finished successfully for this handshake!")
+                already_cracked_essids.add(sanitized_current_essid)
             else:
                 colored_log("error", "Cracking process failed for this handshake.")
+                already_cracked_essids.add(sanitized_current_essid) # Mark as processed (failed)
             
             console.print("-" * console.width, style="dim")
 
