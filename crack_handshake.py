@@ -407,11 +407,11 @@ def main():
             
             current_displayed_essid = get_essid_from_file_analysis(handshake_path)
             if current_displayed_essid != os.path.basename(handshake_path).replace(".cap", "").replace(".pcap", ""):
-                 colored_log("info", f"Network ESSID: [bold yellow]{current_displayed_essid}[/bold yellow]")
+                 colored_log("info", f"  Network ESSID: [bold yellow]{current_displayed_essid}[/bold yellow]")
             else:
-                 colored_log("warning", f"Network ESSID: [yellow]{current_displayed_essid} (Could not auto-detect)[/yellow]")
+                 colored_log("warning", f"  Network ESSID: [yellow]{current_displayed_essid} (Could not auto-detect)[/yellow]")
             
-            # Removed the separator here
+            # This line removed as per user request to not have separator here
             # console.print("=" * console.width, style="bold blue")
 
             if not _check_handshake(handshake_path):
