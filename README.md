@@ -41,7 +41,7 @@ Follow these steps in your Linux terminal to set up the project:
 
 1.  **Clone the Repository**:
     ```bash
-    git clone [https://github.com/Mysteriza/handshakeCracker](https://github.com/Mysteriza/handshakeCracker) # Replace with your repo URL
+    git clone https://github.com/Mysteriza/handshakeCracker
     ```
 
 2.  **Navigate to your Project Directory**:
