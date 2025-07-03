@@ -330,6 +330,54 @@ class PcapValidator(Validator):
         if not (text.lower().endswith(".cap") or text.lower().endswith(".pcap")):
             raise ValidationError(message=f"Not a .cap or .pcap file: {text}", cursor_position=len(text))
 
+# New helper function to scan default directory
+def scan_default_directory(directory_path: str) -> list[str]:
+    found_files = []
+    if not os.path.exists(directory_path):
+        colored_log("error", f"Default directory [bold red]{directory_path}[/bold red] not found.")
+        return []
+    
+    colored_log("info", f"Scanning directory: [bold yellow]{directory_path}[/bold yellow] for .cap/.pcap files...")
+    for root, _, files in os.walk(directory_path):
+        for file in files:
+            if file.lower().endswith((".cap", ".pcap")):
+                full_path = os.path.join(root, file)
+                found_files.append(full_path)
+    return found_files
+
+# New helper function to encapsulate manual input
+def get_manual_handshake_paths(session: PromptSession) -> list[str]:
+    manual_queue = []
+    console.print("\n[bold cyan]Please enter handshake file paths (.cap/.pcap) one by one.[/bold cyan]")
+    console.print("[dim]  (Type 'done' or 'q' to finish adding files. Use TAB for auto-completion.)[/dim]")
+    
+    while True:
+        try:
+            current_input_path = session.prompt(
+                f"Handshake {len(manual_queue) + 1} Path: ",
+                completer=PathCompleter(only_directories=False, expanduser=True),
+                validator=PcapValidator(),
+                validate_while_typing=True
+            ).strip()
+
+            if current_input_path.lower() in ['done', 'q']:
+                break 
+
+            manual_queue.append(current_input_path)
+            colored_log("info", f"Added: [bold yellow]{os.path.basename(current_input_path)}[/bold yellow] to queue.")
+        
+        except ValidationError as e:
+            colored_log("error", str(e))
+        except EOFError:
+            colored_log("info", "Exiting program.")
+            sys.exit(0)
+        except Exception as e:
+            log_error("Error during manual handshake file input.", e)
+            colored_log("error", "An error occurred during file path input. Please try again or restart.")
+            time.sleep(1)
+    
+    return manual_queue
+
 def main():
     os.system('cls' if os.name == 'nt' else 'clear')
 
@@ -353,36 +401,59 @@ def main():
 
         handshake_queue = []
         
-        console.print("\n[bold cyan]Please enter handshake file paths (.cap/.pcap) one by one.[/bold cyan]")
-        console.print("[dim]  (Type 'done' or 'q' to finish adding files. Use TAB for auto-completion.)[/dim]")
-        
-        while True:
+        # Input mode choice
+        def validate_input_mode_choice_value(text): # Renamed to avoid confusion with the validator object
+            if text.lower() not in ['0', '1', '3']:
+                raise ValidationError(message="Please enter '0', '1', or '3'.", cursor_position=len(text))
+
+        input_mode_validator_callable = Validator.from_callable(validate_input_mode_choice_value, error_message="Please enter '0', '1', or '3'.")
+
+        input_mode_choice = ""
+        while input_mode_choice not in ['0', '1', '3']:
+            console.print("\n[bold cyan]Choose input mode:[/bold cyan]")
+            console.print("[dim]  0. Auto (Use all .cap/.pcap files from 'handshakes' directory)[/dim]")
+            console.print("[dim]  1. Manual (Enter custom path(s) one by one)[/dim]")
+            console.print("[dim]  3. Exit program[/dim]")
+            input_mode_choice = input("Mode (0/1/3): ").strip().lower()
+
             try:
-                current_input_path = session.prompt(
-                    f"Handshake {len(handshake_queue) + 1} Path: ",
-                    completer=PathCompleter(only_directories=False, expanduser=True),
-                    validator=PcapValidator(),
-                    validate_while_typing=True
-                ).strip()
-
-                if current_input_path.lower() in ['done', 'q']:
-                    if not handshake_queue:
-                        colored_log("warning", "No handshake files added. Exiting.")
-                        sys.exit(0)
-                    break 
-
-                handshake_queue.append(current_input_path)
-                colored_log("info", f"Added: [bold yellow]{os.path.basename(current_input_path)}[/bold yellow] to queue.")
-            
-            except ValidationError as e:
-                colored_log("error", str(e))
-            except EOFError:
-                colored_log("info", "Exiting program.")
-                sys.exit(0)
+                # Manually validate input from the raw input() function
+                # Validator.validate expects a Document object, not plain string directly from input()
+                # So we simply use the callable logic directly here.
+                if input_mode_choice not in ['0', '1', '3']:
+                    colored_log("error", input_mode_validator_callable.error_message) # Print the error message
+                    input_mode_choice = "" # Reset to force loop continuation
             except Exception as e:
-                log_error("Error during handshake file input.", e)
-                colored_log("error", "An error occurred during file path input. Please try again or restart.")
-                time.sleep(1)
+                log_error("An unexpected error occurred during mode selection validation.", e)
+                colored_log("error", "An unexpected error occurred during mode selection validation. Check log for details.")
+                input_mode_choice = ""
+
+
+        if input_mode_choice == '3':
+            colored_log("info", "Exiting program as requested.")
+            sys.exit(0)
+
+        if input_mode_choice == '1': # Manual mode
+            handshake_queue = get_manual_handshake_paths(session)
+        elif input_mode_choice == '0': # Auto mode
+            default_handshakes_dir = "handshakes"
+            found_files = scan_default_directory(default_handshakes_dir)
+            if not found_files:
+                colored_log("warning", f"No .cap/.pcap files found in [bold yellow]{default_handshakes_dir}[/bold yellow].")
+                console.print("[dim]You can either create this directory and place files in it, or choose manual input.[/dim]")
+                
+                switch_to_manual = session.prompt(Text("Do you want to switch to [bold green]manual input[/bold green] (y/n)? ", style="bold yellow").markup, validator=Validator(lambda text: text.lower() in ['y', 'n'], error_message="Please enter 'y' or 'n'."), validate_while_typing=False).strip().lower()
+                if switch_to_manual == 'y':
+                    handshake_queue = get_manual_handshake_paths(session)
+                else:
+                    colored_log("info", "Exiting program as no files found and manual input declined.")
+                    sys.exit(0)
+            else:
+                handshake_queue.extend(found_files)
+                colored_log("success", f"Found {len(found_files)} .cap/.pcap files in [bold yellow]{default_handshakes_dir}[/bold yellow]. Added to queue.")
+                for f_path in found_files:
+                    colored_log("info", f"  - Added: [bold yellow]{os.path.basename(f_path)}[/bold yellow]")
+
 
         if not handshake_queue:
             colored_log("warning", "No handshake files in queue. Exiting program.")
@@ -411,9 +482,6 @@ def main():
             else:
                  colored_log("warning", f"  Network ESSID: [yellow]{current_displayed_essid} (Could not auto-detect)[/yellow]")
             
-            # This line removed as per user request to not have separator here
-            # console.print("=" * console.width, style="bold blue")
-
             if not _check_handshake(handshake_path):
                 colored_log("error", f"Validation failed for [bold red]{os.path.basename(handshake_path)}[/bold red]. Skipping to next handshake.")
                 console.print("-" * console.width, style="dim")
