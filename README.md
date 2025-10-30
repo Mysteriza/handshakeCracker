@@ -1,4 +1,4 @@
-# ✨ Wi-Fi Handshake Cracker ✨
+# Wi-Fi Handshake Cracker
 
 ## Overview
 A powerful, user-friendly Python command-line tool designed for auditing Wi-Fi network security by cracking pre-captured WPA/WPA2 handshakes. It prioritizes efficiency, effective processing, and clear information delivery, making security testing intuitive and accessible.
