@@ -1,8 +1,11 @@
 import os
 
-from src.console import console, colored_log, log_error
+from src.console import console
 from scapy.all import rdpcap
 from scapy.layers.eap import EAPOL_KEY
+
+CHECK = "OK"
+CROSS = "--"
 
 
 def _classify_eapol(ek) -> str | None:
@@ -22,7 +25,12 @@ def _classify_eapol(ek) -> str | None:
 
 
 def validate_handshake(filepath: str) -> dict:
-    result = {"is_valid": False, "has_m1": False, "has_m2": False, "error": None}
+    result = {
+        "is_valid": False,
+        "has_m1": False, "has_m2": False,
+        "has_m3": False, "has_m4": False,
+        "error": None,
+    }
     try:
         packets = rdpcap(filepath)
     except Exception as e:
@@ -38,28 +46,73 @@ def validate_handshake(filepath: str) -> dict:
             result["has_m1"] = True
         elif msg_type == "M2":
             result["has_m2"] = True
+        elif msg_type == "M3":
+            result["has_m3"] = True
+        elif msg_type == "M4":
+            result["has_m4"] = True
 
     result["is_valid"] = result["has_m1"] and result["has_m2"]
     return result
 
 
+def _hline(widths: list[int]) -> str:
+    parts = ["+"]
+    for w in widths:
+        parts.append("-" * (w + 2) + "+")
+    return "".join(parts)
+
+
+def _row(cells: list[str], widths: list[int]) -> str:
+    parts = ["|"]
+    for c, w in zip(cells, widths):
+        parts.append(f" {c}".ljust(w + 2) + "|")
+    return "".join(parts)
+
+
 def validate_all_handshakes(file_list: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
-    console.print("\n[cyan]Validating handshake files...[/cyan]")
+    console.print("\nValidating handshake files...")
+
+    results = []
+    for f in file_list:
+        v = validate_handshake(f)
+        results.append((f, v))
+
+    name_width = max(len(os.path.basename(f)) for f, _ in results)
+    name_width = max(name_width, 4)
+    col_w = 4
+    widths = [name_width, col_w, col_w, col_w, col_w, 6]
+
+    header = ["File", "M1", "M2", "M3", "M4", "Status"]
+    rows = []
     valid = []
     invalid = []
 
-    for f in file_list:
-        v = validate_handshake(f)
-        if v["is_valid"]:
-            valid.append(f)
-            console.print(f"  [green]VALID[/green]   {os.path.basename(f)}")
+    for f, v in results:
+        basename = os.path.basename(f)
+        if v["error"]:
+            cells = [basename, CROSS, CROSS, CROSS, CROSS, "ERROR"]
+            invalid.append((f, v["error"]))
         else:
-            reason = v["error"] or "missing M1 or M2"
-            invalid.append((f, reason))
-            console.print(f"  [red]INVALID[/red] {os.path.basename(f)} - {reason}")
+            cells = [
+                basename,
+                CHECK if v["has_m1"] else CROSS,
+                CHECK if v["has_m2"] else CROSS,
+                CHECK if v["has_m3"] else CROSS,
+                CHECK if v["has_m4"] else CROSS,
+                "VALID" if v["is_valid"] else "INVALID",
+            ]
+            if v["is_valid"]:
+                valid.append(f)
+            else:
+                invalid.append((f, "missing M1 or M2"))
+        rows.append(cells)
 
-    console.print(
-        f"\n  Summary: [green]{len(valid)} valid[/green], "
-        f"[red]{len(invalid)} invalid[/red]"
-    )
+    console.print(_hline(widths))
+    console.print(_row(header, widths))
+    console.print(_hline(widths))
+    for cells in rows:
+        console.print(_row(cells, widths))
+    console.print(_hline(widths))
+
+    console.print(f"\n  {len(valid)} valid, {len(invalid)} invalid")
     return valid, invalid

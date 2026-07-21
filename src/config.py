@@ -1,4 +1,6 @@
 WORDLIST_URL = "https://raw.githubusercontent.com/Mysteriza/WiFi-Password-Wordlist/main/wifite.txt"
+AIRCRACK_WIN_URL = "https://download.aircrack-ng.org/aircrack-ng-1.7-win.zip"
 HANDSHAKES_DIR = "handshakes"
 RESULTS_DIR = "cracked_results"
 WORDLIST_NAME = "wifite.txt"
+BIN_DIR = "bin"

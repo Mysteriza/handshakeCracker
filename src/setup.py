@@ -1,30 +1,103 @@
 import os
+import platform
 import subprocess
 
 from rich.panel import Panel
 from rich.text import Text
 
 from src.console import console, colored_log, log_error
-from src.config import HANDSHAKES_DIR, RESULTS_DIR, WORDLIST_NAME, WORDLIST_URL
-from src.utils import download_wordlist
+from src.config import (
+    HANDSHAKES_DIR, RESULTS_DIR, WORDLIST_NAME, WORDLIST_URL,
+    AIRCRACK_WIN_URL, BIN_DIR,
+)
+from src.utils import download_wordlist, download_and_extract_zip
 
 
-def check_dependency(tool_name: str) -> bool:
+def _find_exe_in_path(exe: str) -> str | None:
+    for path in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(path.strip('"'), exe)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def _find_aircrack_anywhere() -> str | None:
+    system = platform.system()
+    exe = "aircrack-ng.exe" if system == "Windows" else "aircrack-ng"
+    found = _find_exe_in_path(exe)
+    if found:
+        return found
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    local_paths = [
+        os.path.join(root, "..", exe),
+        os.path.join(root, "..", BIN_DIR, exe),
+    ]
+
+    if system == "Windows":
+        local_paths += [
+            os.path.join(os.environ.get("PROGRAMFILES", "C:\\Program Files"), "aircrack-ng", "bin", exe),
+            os.path.join(os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)"), "aircrack-ng", "bin", exe),
+            os.path.join(os.environ.get("LOCALAPPDATA", ""), "aircrack-ng", "bin", exe),
+        ]
+
+    for p in local_paths:
+        resolved = os.path.abspath(p)
+        if os.path.isfile(resolved):
+            return resolved
+    return None
+
+
+def _add_parent_to_path(found_path: str):
+    parent = os.path.dirname(os.path.abspath(found_path))
+    if parent not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = parent + os.pathsep + os.environ.get("PATH", "")
+
+
+def ensure_aircrack() -> bool:
     try:
-        result = subprocess.run(
-            ["which", tool_name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode == 0:
+        found = _find_aircrack_anywhere()
+        if found:
+            _add_parent_to_path(found)
             return True
-        colored_log("error", f"{tool_name} is not installed or not in your PATH.")
-        colored_log("info", f"Install it with: sudo apt-get install {tool_name}")
-        return False
+
+        system = platform.system()
+        if system == "Windows":
+            root = os.path.dirname(os.path.abspath(__file__))
+            bin_path = os.path.abspath(os.path.join(root, "..", BIN_DIR))
+            if download_and_extract_zip(AIRCRACK_WIN_URL, bin_path, "aircrack-ng-1.7-win/bin"):
+                found = _find_aircrack_anywhere()
+                if found:
+                    _add_parent_to_path(found)
+                    return True
+            colored_log("error", "Could not download aircrack-ng.")
+            return False
+
+        elif system == "Linux":
+            colored_log("info", "Installing aircrack-ng via apt-get...")
+            try:
+                subprocess.run(
+                    ["sudo", "apt-get", "install", "-y", "aircrack-ng"],
+                    check=True, capture_output=True, text=True,
+                )
+                colored_log("success", "aircrack-ng installed.")
+                found = _find_aircrack_anywhere()
+                if found:
+                    _add_parent_to_path(found)
+                    return True
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+            colored_log("error", "Could not install aircrack-ng automatically.")
+            colored_log("info", "Install manually: sudo apt-get install aircrack-ng")
+            return False
+
+        else:
+            colored_log("error", f"Unsupported OS: {system}. Install aircrack-ng manually.")
+            return False
+
     except Exception as e:
-        log_error(f"Error checking dependency for {tool_name}", e)
-        colored_log("error", f"Could not check dependency for {tool_name} due to an error.")
+        log_error("Error during aircrack-ng setup", e)
+        colored_log("error", "Could not set up aircrack-ng.")
         return False
 
 
@@ -51,17 +124,7 @@ def ensure_directories() -> bool:
         for f in os.listdir(HANDSHAKES_DIR)
     )
     if not has_cap:
-        console.print(
-            f"\n[yellow]No .cap/.pcap files found in '{HANDSHAKES_DIR}'.[/yellow]"
-        )
-        console.print(
-            f"Please place your handshake files (.cap/.pcap) inside "
-            f"the '{HANDSHAKES_DIR}' folder."
-        )
-        console.print("Then press Enter to continue.\n")
-        choice = input("Press Enter to continue, or 'q' to quit: ").strip().lower()
-        if choice == 'q':
-            return False
+        colored_log("warning", f"No .cap/.pcap files found in '{HANDSHAKES_DIR}'.")
 
     return True
 
@@ -73,19 +136,7 @@ def ensure_wordlist() -> bool:
     if os.path.exists(wordlist_path):
         return True
 
-    colored_log("warning", f"Wordlist '{WORDLIST_NAME}' not found.")
-    console.print("The program can download it automatically from GitHub.")
-    choice = input("Download wordlist? (Y/n): ").strip().lower()
-    if choice == "n":
-        colored_log(
-            "error",
-            f"Wordlist '{WORDLIST_NAME}' is required. "
-            f"Please place it in the program directory.",
-        )
-        return False
-
     if download_wordlist(WORDLIST_URL, wordlist_path):
-        colored_log("success", "Wordlist ready.")
         return True
 
     return False
@@ -93,8 +144,7 @@ def ensure_wordlist() -> bool:
 
 def auto_setup() -> bool:
     show_banner()
-    if not check_dependency("aircrack-ng"):
-        colored_log("error", "aircrack-ng is required. Install it then re-run the program.")
+    if not ensure_aircrack():
         return False
     if not ensure_directories():
         return False
