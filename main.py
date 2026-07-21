@@ -37,7 +37,6 @@ from src.config import HANDSHAKES_DIR, WORDLIST_NAME
 from src.utils import (
     sanitize_ssid,
     scan_default_directory,
-    get_essid_from_file_analysis,
 )
 from src.validator import validate_all_handshakes
 from src.cracker import get_already_cracked_essids, crack_handshake
@@ -171,25 +170,18 @@ def main():
                 f" {os.path.basename(handshake_path)}"
             )
 
-            essid = get_essid_from_file_analysis(handshake_path)
-            safe_essid = sanitize_ssid(essid)
+            base_essid = os.path.basename(handshake_path).replace(
+                ".cap", ""
+            ).replace(".pcap", "")
+            safe_essid = sanitize_ssid(base_essid)
 
             if safe_essid in already_cracked:
                 console.print(
-                    f"  Network: {essid} already processed. Skipping."
+                    f"  Network: {base_essid} already processed. Skipping."
                 )
                 continue
 
-            if essid != os.path.basename(handshake_path).replace(
-                ".cap", ""
-            ).replace(".pcap", ""):
-                console.print(f"  Network ESSID: {essid}")
-            else:
-                console.print(
-                    f"  Network ESSID: {essid} (could not auto-detect)"
-                )
-
-            cracked = crack_handshake(handshake_path, wordlist_path, essid)
+            cracked = crack_handshake(handshake_path, wordlist_path, base_essid)
 
             if cracked:
                 console.print(f"  Done.")
