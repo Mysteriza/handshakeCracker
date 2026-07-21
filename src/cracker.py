@@ -103,9 +103,6 @@ def parse_aircrack_failure_summary(output: str) -> dict:
 def crack_handshake(
     handshake_path: str, wordlist_path: str, display_essid: str
 ) -> str | None:
-    print()
-    console.print(f"[cyan]  Wordlist:[/cyan] {os.path.basename(wordlist_path)}")
-
     try:
         messages = [
             f"Cracking {display_essid}... Initializing packet analyzer...",
@@ -193,8 +190,6 @@ def crack_handshake(
                         + "_determined_final"
                     )
 
-                console.print(f"\n  [green]Password Found[/green]")
-                console.print(f"  [green]Network:[/green] {final_essid}")
                 console.print(f"  [green]Password:[/green] {password}")
                 console.print(f"  [dim]Time:[/dim] {time_str}")
 
