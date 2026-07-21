@@ -15,13 +15,13 @@ def _get_error_log():
 
 def colored_log(level: str, message: str):
     if level == "info":
-        console.print(f"[cyan]INFO:[/cyan] {message}")
+        console.print(f"[cyan]{message}[/cyan]")
     elif level == "success":
-        console.print(f"[green]SUCCESS:[/green] {message}")
+        console.print(f"[green]{message}[/green]")
     elif level == "warning":
-        console.print(f"[yellow]WARNING:[/yellow] {message}")
+        console.print(f"[yellow]{message}[/yellow]")
     elif level == "error":
-        console.print(f"[red]ERROR:[/red] {message}")
+        console.print(f"[red]{message}[/red]")
     else:
         console.print(message)
 

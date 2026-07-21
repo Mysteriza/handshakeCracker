@@ -1,2 +1,5 @@
 /venv
 /cracked_results
+__pycache__/
+*.pyc
+*.pyo

@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 import time
 import subprocess
 
@@ -103,15 +104,28 @@ def parse_aircrack_failure_summary(output: str) -> dict:
 def crack_handshake(
     handshake_path: str, wordlist_path: str, display_essid: str
 ) -> str | None:
-    colored_log("info", f"Using wordlist: {os.path.basename(wordlist_path)}")
+    print()
+    console.print(f"[cyan]  Wordlist:[/cyan] {os.path.basename(wordlist_path)}")
 
     try:
-        progress_messages = [
-            f"Cracking {display_essid}... Analyzing handshake data...",
-            f"Processing {display_essid}... Searching for the key...",
-        ]
+        proc = subprocess.Popen(
+            ["aircrack-ng", "-w", wordlist_path, handshake_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+        )
 
-        msg_index = 0
+        stderr_lines = []
+        def _read_stderr():
+            for line in iter(proc.stderr.readline, ""):
+                stderr_lines.append(line)
+        stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
+        stderr_thread.start()
+
+        start_time = time.time()
+        stdout_lines = []
 
         with Progress(
             SpinnerColumn("dots", style="cyan"),
@@ -119,21 +133,9 @@ def crack_handshake(
             transient=True,
             console=console,
         ) as progress:
-            task = progress.add_task(progress_messages[msg_index], total=None)
-
-            start_time = time.time()
+            task = progress.add_task(f"Cracking {display_essid}...", total=None)
             last_update = start_time
 
-            proc = subprocess.Popen(
-                ["aircrack-ng", "-w", wordlist_path, handshake_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-            )
-
-            stdout_lines = []
             while True:
                 line = proc.stdout.readline()
                 if line:
@@ -142,26 +144,33 @@ def crack_handshake(
                         break
 
                 now = time.time()
-                if now - last_update >= 2:
-                    msg_index = (msg_index + 1) % len(progress_messages)
-                    progress.update(task, description=progress_messages[msg_index])
+                if now - last_update >= 1 and stderr_lines:
+                    stderr_line = stderr_lines[-1]
+                    m = re.search(r"(\d+)/(\d+)\s+keys tested", stderr_line)
+                    if m:
+                        cur, total = int(m.group(1)), int(m.group(2))
+                        pct = (cur / total) * 100
+                        progress.update(
+                            task,
+                            description=f"Cracking {display_essid}... "
+                                        f"{cur:,}/{total:,} keys tested ({pct:.1f}%)",
+                        )
                     last_update = now
 
                 if proc.poll() is not None:
                     break
                 time.sleep(0.05)
 
-            remaining_stdout, remaining_stderr = proc.communicate()
+            remaining_stdout, _ = proc.communicate(timeout=5)
             stdout_lines.append(remaining_stdout)
             result_stdout = "".join(stdout_lines)
-            result_stderr = "".join(remaining_stderr)
             progress.remove_task(task)
 
         if proc.returncode != 0 and "KEY FOUND!" not in result_stdout:
-            colored_log("error", "Aircrack-ng command failed or did not find a key.")
+            console.print(f"  [red]Failed:[/red] aircrack-ng did not find the key.")
             log_error(
                 f"Aircrack-ng failed for {os.path.basename(handshake_path)}:\n"
-                f"Stdout:\n{result_stdout}\nStderr:\n{result_stderr}"
+                f"Stdout:\n{result_stdout}"
             )
             return None
 
@@ -190,10 +199,10 @@ def crack_handshake(
                         + "_determined_final"
                     )
 
-                console.print(f"\n[green]Password Found![/green]")
-                console.print(f"  [cyan]Network Name:[/cyan] {final_essid}")
+                console.print(f"\n  [green]Password Found![/green]")
+                console.print(f"  [green]Network:[/green] {final_essid}")
                 console.print(f"  [green]Password:[/green] {password}")
-                console.print(f"  Time Taken: {time_str}")
+                console.print(f"  [dim]Time:[/dim] {time_str}")
 
                 os.makedirs(RESULTS_DIR, exist_ok=True)
                 safe_essid = sanitize_ssid(final_essid)
@@ -207,17 +216,14 @@ def crack_handshake(
                     f.write(f"Password Found: {password}\n")
                     f.write(f"Time Taken: {time_str}\n")
 
-                colored_log("info", f"Results saved to: {result_file}")
+                console.print(f"  [dim]Saved to:[/dim] {result_file}")
                 return password
 
-        colored_log(
-            "error",
-            "Password not found in the wordlist. "
-            "Consider trying a different or larger wordlist!",
-        )
+        console.print(f"  [red]Password not found in wordlist.[/red] "
+                      f"Try a larger wordlist.")
         return None
 
     except Exception as e:
         log_error(f"Critical error during cracking process for {handshake_path}", e)
-        colored_log("error", "Cracking process terminated due to an unexpected error.")
+        console.print(f"  [red]Cracking terminated due to an unexpected error.[/red]")
         return None

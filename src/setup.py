@@ -45,17 +45,22 @@ def ensure_directories() -> bool:
 
     if not os.path.exists(HANDSHAKES_DIR):
         os.makedirs(HANDSHAKES_DIR)
+
+    has_cap = any(
+        f.lower().endswith(('.cap', '.pcap'))
+        for f in os.listdir(HANDSHAKES_DIR)
+    )
+    if not has_cap:
         console.print(
-            f"\n[yellow]Directory '{HANDSHAKES_DIR}' has been created.[/yellow]"
+            f"\n[yellow]No .cap/.pcap files found in '{HANDSHAKES_DIR}'.[/yellow]"
         )
         console.print(
-            f"Please place your .cap/.pcap handshake files inside "
+            f"Please place your handshake files (.cap/.pcap) inside "
             f"the '{HANDSHAKES_DIR}' folder."
         )
-        console.print("Then re-run this program.\n")
-        input("Press Enter after you have added handshake files...")
-        if not os.listdir(HANDSHAKES_DIR):
-            colored_log("warning", "No files found in handshakes directory.")
+        console.print("Then press Enter to continue.\n")
+        choice = input("Press Enter to continue, or 'q' to quit: ").strip().lower()
+        if choice == 'q':
             return False
 
     return True
