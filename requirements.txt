@@ -1,3 +1,4 @@
-rich
-prompt_toolkit
-scapy
+rich>=10.0
+prompt_toolkit>=3.0
+scapy>=2.5
+py7zr>=0.20

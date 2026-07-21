@@ -41,6 +41,8 @@ from src.utils import (
 from src.validator import validate_all_handshakes
 from src.cracker import get_already_cracked_essids, crack_handshake
 from src.setup import auto_setup
+from src.gpu import has_discrete_gpu, get_gpu_name
+from src.hashcat_cracker import hashcat_crack_handshake, ensure_hashcat
 
 
 class PcapValidator(Validator):
@@ -117,6 +119,18 @@ def main():
         wordlist_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME
         )
+
+        use_hashcat = has_discrete_gpu()
+        if use_hashcat:
+            gpu_name = get_gpu_name()
+            colored_log("info", f"Discrete GPU detected: {gpu_name or 'Unknown'}")
+            colored_log("info", "Will use hashcat (GPU accelerated cracking).")
+            if not ensure_hashcat():
+                colored_log("warning", "hashcat setup failed — falling back to CPU (aircrack-ng).")
+                use_hashcat = False
+        else:
+            colored_log("info", "No discrete GPU detected — using CPU (aircrack-ng).")
+
         session = PromptSession(history=InMemoryHistory())
 
         found_files = scan_default_directory(HANDSHAKES_DIR)
@@ -181,7 +195,19 @@ def main():
                 )
                 continue
 
-            cracked = crack_handshake(handshake_path, wordlist_path, base_essid)
+            if use_hashcat:
+                cracked = hashcat_crack_handshake(
+                    handshake_path, wordlist_path, base_essid
+                )
+                if cracked is None:
+                    colored_log("warning", "Hashcat failed — falling back to aircrack-ng.")
+                    cracked = crack_handshake(
+                        handshake_path, wordlist_path, base_essid
+                    )
+            else:
+                cracked = crack_handshake(
+                    handshake_path, wordlist_path, base_essid
+                )
 
             if cracked:
                 console.print(f"  Done.")
