@@ -1,37 +1,12 @@
 import os
 import re
 import sys
-import subprocess
 import tempfile
 import urllib.request
 import zipfile
 
 from src.console import console, colored_log, log_error
 
-
-def execute_command(command: list[str]) -> subprocess.CompletedProcess | None:
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            encoding='utf-8',
-            errors='replace',
-        )
-        if result.returncode != 0:
-            error_msg = (
-                f"Command failed with exit code {result.returncode}: {' '.join(command)}\n"
-                f"Stdout: {result.stdout}\nStderr: {result.stderr}"
-            )
-            log_error(f"Command execution error: {error_msg}")
-        return result
-    except FileNotFoundError:
-        log_error(f"Command not found: '{command[0]}'. Make sure it's installed and in your PATH.")
-        return None
-    except Exception as e:
-        log_error(f"Unhandled exception during command execution: {' '.join(command)}", e)
-        return None
 
 
 def sanitize_ssid(ssid: str) -> str:
@@ -52,34 +27,6 @@ def scan_default_directory(directory_path: str) -> list[str]:
                 found_files.append(full_path)
     return found_files
 
-
-def get_essid_from_file_analysis(cap_file: str) -> str:
-    essid = os.path.basename(cap_file).replace(".cap", "").replace(".pcap", "")
-    try:
-        result = execute_command(["aircrack-ng", cap_file])
-        if result and result.stdout:
-            essid_line_match = re.search(
-                r"[\dA-Fa-f:]{17}\s*(.*?)\s+(?:WEP|WPA)", result.stdout
-            )
-            if essid_line_match:
-                found_essid = essid_line_match.group(1).strip()
-                if found_essid not in ("", "<hidden>"):
-                    return found_essid
-
-            essid_match_summary = re.search(
-                r"ESSID:\s*(.*?)(?:\s*\([\dA-Fa-f:]{17}\))?", result.stdout
-            )
-            if essid_match_summary:
-                found_essid_summary = essid_match_summary.group(1).strip()
-                if found_essid_summary not in ("", "<hidden>"):
-                    return found_essid_summary
-
-            if "ESSID: <hidden>" in result.stdout:
-                return "<hidden>"
-    except Exception as e:
-        log_error(f"Error extracting ESSID for display from {cap_file}", e)
-
-    return essid
 
 
 def download_with_progress(url: str, dest: str, label: str = "Downloading") -> bool:
@@ -111,6 +58,7 @@ def download_and_extract_zip(url: str, extract_to: str, subdir: str | None = Non
     tmp_path = None
     try:
         colored_log("info", "Downloading aircrack-ng for Windows...")
+        colored_log("info", "The aircrack-ng server can be slow; this may take a few minutes.")
         with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
             tmp_path = tmp.name
 
