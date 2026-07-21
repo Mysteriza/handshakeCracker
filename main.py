@@ -62,10 +62,10 @@ class PcapValidator(Validator):
 
 def get_manual_handshake_paths(session: PromptSession) -> list[str]:
     manual_queue = []
-    console.print("\n[cyan]Please enter handshake file paths (.cap/.pcap) one by one.[/cyan]")
+    console.print("\nPlease enter handshake file paths (.cap/.pcap) one by one.")
     console.print(
-        "[dim](Type 'done' or 'q' to finish adding files. "
-        "Use TAB for auto-completion.)[/dim]"
+        "(Type 'done' or 'q' to finish adding files. "
+        "Use TAB for auto-completion.)"
     )
 
     while True:
@@ -106,7 +106,7 @@ def get_manual_handshake_paths(session: PromptSession) -> list[str]:
     return manual_queue
 
 
-SEPARATOR = f"[dim]{'─' * 60}[/dim]"
+SEPARATOR = "-" * 60
 
 def main():
     os.system("cls" if os.name == "nt" else "clear")
@@ -124,20 +124,20 @@ def main():
         handshake_queue = []
 
         if not found_files:
-            console.print(f"[yellow]No .cap/.pcap files found in '{HANDSHAKES_DIR}'.[/yellow]")
+            console.print(f"No .cap/.pcap files found in '{HANDSHAKES_DIR}'.")
             switch_to_manual = (
                 input("Switch to manual file entry? (y/N): ").strip().lower()
             )
             if switch_to_manual == "y":
                 handshake_queue = get_manual_handshake_paths(session)
             else:
-                console.print("[cyan]Exiting.[/cyan]")
+                console.print("Exiting.")
                 sys.exit(0)
         else:
             handshake_queue.extend(found_files)
             console.print(
-                f"[green]Found {len(found_files)} .cap/.pcap files "
-                f"in '{HANDSHAKES_DIR}'.[/green]"
+                f"Found {len(found_files)} .cap/.pcap files "
+                f"in '{HANDSHAKES_DIR}'."
             )
 
         if not handshake_queue:
@@ -152,14 +152,14 @@ def main():
 
         handshake_queue = valid_files
         console.print(
-            f"[cyan]Processing {len(handshake_queue)} valid handshake(s)...[/cyan]"
+            f"Processing {len(handshake_queue)} valid handshake(s)..."
         )
 
         already_cracked = get_already_cracked_essids()
         if already_cracked:
             console.print(
-                f"[cyan]Found {len(already_cracked)} previously cracked "
-                f"network(s). These will be skipped.[/cyan]"
+                f"Found {len(already_cracked)} previously cracked "
+                f"network(s). These will be skipped."
             )
 
         handshake_queue.sort(key=lambda p: os.path.getsize(p), reverse=True)
@@ -167,8 +167,8 @@ def main():
         for i, handshake_path in enumerate(handshake_queue):
             console.print(f"\n{SEPARATOR}")
             console.print(
-                f"[cyan]Handshake {i+1}/{len(handshake_queue)}:"
-                f"[/cyan] {os.path.basename(handshake_path)}"
+                f"Handshake {i+1}/{len(handshake_queue)}:"
+                f" {os.path.basename(handshake_path)}"
             )
 
             essid = get_essid_from_file_analysis(handshake_path)
@@ -176,7 +176,7 @@ def main():
 
             if safe_essid in already_cracked:
                 console.print(
-                    f"  [yellow]Network: {essid} already processed. Skipping.[/yellow]"
+                    f"  Network: {essid} already processed. Skipping."
                 )
                 continue
 
@@ -186,21 +186,21 @@ def main():
                 console.print(f"  Network ESSID: {essid}")
             else:
                 console.print(
-                    f"  [yellow]Network ESSID: {essid} (could not auto-detect)[/yellow]"
+                    f"  Network ESSID: {essid} (could not auto-detect)"
                 )
 
             cracked = crack_handshake(handshake_path, wordlist_path, essid)
 
             if cracked:
-                console.print(f"  [green]Done.[/green]")
+                console.print(f"  Done.")
                 already_cracked.add(safe_essid)
             else:
-                console.print(f"  [red]Failed.[/red]")
+                console.print(f"  Failed.")
                 already_cracked.add(safe_essid)
 
         console.print(f"\n{SEPARATOR}")
-        console.print("[green]All handshakes have been processed![/green]")
-        console.print("[cyan]Program finished. Exiting.[/cyan]")
+        console.print("All handshakes have been processed!")
+        console.print("Program finished. Exiting.")
 
     except KeyboardInterrupt:
         colored_log("warning", "Program interrupted by user (Ctrl+C). Exiting gracefully.")

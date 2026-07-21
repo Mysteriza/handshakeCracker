@@ -3,8 +3,6 @@ import re
 import time
 import subprocess
 
-from rich.progress import Progress, SpinnerColumn, TextColumn
-
 from src.console import console, log_error
 from src.config import RESULTS_DIR
 from src.utils import sanitize_ssid
@@ -26,139 +24,38 @@ def get_already_cracked_essids() -> set[str]:
     return cracked_essids
 
 
-def parse_aircrack_failure_summary(output: str) -> dict:
-    parsed_info = {
-        "keys_tested": "N/A",
-        "time_left": "N/A",
-        "percentage": "N/A",
-        "current_passphrase": "N/A",
-        "master_key": "N/A",
-        "transient_key": "N/A",
-        "eapol_hmac": "N/A",
-    }
-
-    lines = output.splitlines()
-    for i in range(len(lines) - 1, -1, -1):
-        line = lines[i]
-
-        if "keys tested" in line and parsed_info["keys_tested"] == "N/A":
-            match = re.search(r"(\d+)/(\d+)\s+keys tested\s+\(([\d.]+ k/s)\)", line)
-            if match:
-                parsed_info["keys_tested"] = (
-                    f"{match.group(1)}/{match.group(2)} keys tested ({match.group(3)})"
-                )
-            if i + 1 < len(lines):
-                time_percent_line = lines[i + 1]
-                time_match = re.search(
-                    r"Time left:\s*(.*?)\s*([\d.]+\%)", time_percent_line
-                )
-                if time_match:
-                    parsed_info["time_left"] = time_match.group(1).strip()
-                    parsed_info["percentage"] = time_match.group(2).strip()
-            continue
-
-        if "Current passphrase:" in line and parsed_info["current_passphrase"] == "N/A":
-            match = re.search(r"Current passphrase:\s*(.*)", line)
-            if match:
-                parsed_info["current_passphrase"] = match.group(1).strip()
-            continue
-
-        if "Master Key" in line and parsed_info["master_key"] == "N/A":
-            match = re.search(r"Master Key\s*:\s*(.*)", line)
-            if match:
-                key_hex = match.group(1).strip()
-                collected = [key_hex]
-                for j in range(i + 1, len(lines)):
-                    nl = lines[j].strip()
-                    if re.match(r"([\dA-Fa-f]{2}(?:\s[\dA-Fa-f]{2})*){1,16}", nl):
-                        collected.append(nl)
-                    else:
-                        break
-                parsed_info["master_key"] = "\n    ".join(collected)
-            continue
-
-        if "Transient Key" in line and parsed_info["transient_key"] == "N/A":
-            match = re.search(r"Transient Key\s*:\s*(.*)", line)
-            if match:
-                key_hex = match.group(1).strip()
-                collected = [key_hex]
-                for j in range(i + 1, len(lines)):
-                    nl = lines[j].strip()
-                    if re.match(r"([\dA-Fa-f]{2}(?:\s[\dA-Fa-f]{2})*){1,16}", nl):
-                        collected.append(nl)
-                    else:
-                        break
-                parsed_info["transient_key"] = "\n    ".join(collected)
-            continue
-
-        if "EAPOL HMAC" in line and parsed_info["eapol_hmac"] == "N/A":
-            match = re.search(r"EAPOL HMAC\s*:\s*(.*)", line)
-            if match:
-                parsed_info["eapol_hmac"] = match.group(1).strip()
-            continue
-
-    return parsed_info
-
-
 def crack_handshake(
     handshake_path: str, wordlist_path: str, display_essid: str
 ) -> str | None:
     try:
-        messages = [
-            f"Cracking {display_essid}... Initializing packet analyzer...",
-            f"Cracking {display_essid}... Extracting handshake from capture...",
-            f"Cracking {display_essid}... Loading wordlist into memory...",
-            f"Cracking {display_essid}... Brute-forcing PMK computation...",
-            f"Cracking {display_essid}... Testing key combinations...",
-            f"Cracking {display_essid}... Almost there, checking matches...",
-        ]
-        msg_idx = 0
+        start_time = time.time()
 
-        with Progress(
-            SpinnerColumn("dots", style="cyan"),
-            TextColumn("[progress.description]{task.description}"),
-            transient=True,
-            console=console,
-        ) as progress:
-            task = progress.add_task(messages[0], total=None)
+        proc = subprocess.Popen(
+            ["aircrack-ng", "-w", wordlist_path, handshake_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+        )
 
-            start_time = time.time()
-            last_switch = start_time
-
-            proc = subprocess.Popen(
-                ["aircrack-ng", "-w", wordlist_path, handshake_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-            )
-
-            stdout_lines = []
-            while True:
-                line = proc.stdout.readline()
-                if line:
-                    stdout_lines.append(line)
-                    if "KEY FOUND!" in line:
-                        break
-
-                now = time.time()
-                if now - last_switch >= 3:
-                    msg_idx = (msg_idx + 1) % len(messages)
-                    progress.update(task, description=messages[msg_idx])
-                    last_switch = now
-
-                if proc.poll() is not None:
+        stdout_lines = []
+        while True:
+            line = proc.stdout.readline()
+            if line:
+                stdout_lines.append(line)
+                if "KEY FOUND!" in line:
                     break
-                time.sleep(0.05)
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
 
-            remaining_stdout, _ = proc.communicate()
-            stdout_lines.append(remaining_stdout)
-            result_stdout = "".join(stdout_lines)
-            progress.remove_task(task)
+        remaining_stdout, _ = proc.communicate()
+        stdout_lines.append(remaining_stdout)
+        result_stdout = "".join(stdout_lines)
 
         if proc.returncode != 0 and "KEY FOUND!" not in result_stdout:
-            console.print(f"  [red]Failed:[/red] aircrack-ng did not find the key.")
+            console.print(f"  Failed: aircrack-ng did not find the key.")
             log_error(
                 f"Aircrack-ng failed for {os.path.basename(handshake_path)}:\n"
                 f"Stdout:\n{result_stdout}"
@@ -190,8 +87,8 @@ def crack_handshake(
                         + "_determined_final"
                     )
 
-                console.print(f"  [green]Password:[/green] {password}")
-                console.print(f"  [dim]Time:[/dim] {time_str}")
+                console.print(f"  Password: {password}")
+                console.print(f"  Time: {time_str}")
 
                 os.makedirs(RESULTS_DIR, exist_ok=True)
                 safe_essid = sanitize_ssid(final_essid)
@@ -205,14 +102,13 @@ def crack_handshake(
                     f.write(f"Password Found: {password}\n")
                     f.write(f"Time Taken: {time_str}\n")
 
-                console.print(f"  [dim]Saved to:[/dim] {result_file}")
+                console.print(f"  Saved to: {result_file}")
                 return password
 
-        console.print(f"  [red]Password not found in wordlist.[/red] "
-                      f"Try a larger wordlist.")
+        console.print(f"  Password not found in wordlist. Try a larger wordlist.")
         return None
 
     except Exception as e:
         log_error(f"Critical error during cracking process for {handshake_path}", e)
-        console.print(f"  [red]Cracking terminated due to an unexpected error.[/red]")
+        console.print(f"  Cracking terminated due to an unexpected error.")
         return None

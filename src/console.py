@@ -1,7 +1,39 @@
 import datetime
+import sys
+import os
+
 from rich.console import Console
 
-console = Console()
+
+def _enable_vt():
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            hStdout = kernel32.GetStdHandle(-11)
+            mode = ctypes.c_uint32()
+            if kernel32.GetConsoleMode(hStdout, ctypes.byref(mode)):
+                mode.value |= 0x0004
+                kernel32.SetConsoleMode(hStdout, mode)
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _init_colorama():
+    try:
+        import colorama
+        colorama.init()
+        return True
+    except Exception:
+        return False
+
+
+_enable_vt()
+_init_colorama()
+
+console = Console(highlight=False)
 _error_log_file = None
 
 
