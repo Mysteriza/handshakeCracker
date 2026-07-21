@@ -1,6 +1,5 @@
 import os
 import re
-import threading
 import time
 import subprocess
 
@@ -101,14 +100,6 @@ def parse_aircrack_failure_summary(output: str) -> dict:
     return parsed_info
 
 
-def _extract_progress(text: str) -> tuple[int, int] | None:
-    for part in reversed(text.split("\r")):
-        m = re.search(r"(\d+)/(\d+)\s+keys tested", part)
-        if m:
-            return int(m.group(1)), int(m.group(2))
-    return None
-
-
 def crack_handshake(
     handshake_path: str, wordlist_path: str, display_essid: str
 ) -> str | None:
@@ -116,27 +107,15 @@ def crack_handshake(
     console.print(f"[cyan]  Wordlist:[/cyan] {os.path.basename(wordlist_path)}")
 
     try:
-        proc = subprocess.Popen(
-            ["aircrack-ng", "-w", wordlist_path, handshake_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-        stderr_data = []
-        def _read_stderr():
-            fd = proc.stderr.fileno()
-            while True:
-                try:
-                    chunk = os.read(fd, 4096)
-                    if not chunk:
-                        break
-                    stderr_data.append(chunk)
-                except OSError:
-                    break
-        threading.Thread(target=_read_stderr, daemon=True).start()
-
-        start_time = time.time()
-        stdout_raw = []
+        messages = [
+            f"Cracking {display_essid}... Initializing packet analyzer...",
+            f"Cracking {display_essid}... Extracting handshake from capture...",
+            f"Cracking {display_essid}... Loading wordlist into memory...",
+            f"Cracking {display_essid}... Brute-forcing PMK computation...",
+            f"Cracking {display_essid}... Testing key combinations...",
+            f"Cracking {display_essid}... Almost there, checking matches...",
+        ]
+        msg_idx = 0
 
         with Progress(
             SpinnerColumn("dots", style="cyan"),
@@ -144,41 +123,41 @@ def crack_handshake(
             transient=True,
             console=console,
         ) as progress:
-            task = progress.add_task(f"Cracking {display_essid}...", total=None)
-            last_update = start_time
+            task = progress.add_task(messages[0], total=None)
 
+            start_time = time.time()
+            last_switch = start_time
+
+            proc = subprocess.Popen(
+                ["aircrack-ng", "-w", wordlist_path, handshake_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+            )
+
+            stdout_lines = []
             while True:
                 line = proc.stdout.readline()
                 if line:
-                    decoded = line.decode("utf-8", errors="replace")
-                    stdout_raw.append(decoded)
-                    if "KEY FOUND!" in decoded:
+                    stdout_lines.append(line)
+                    if "KEY FOUND!" in line:
                         break
 
                 now = time.time()
-                if now - last_update >= 1 and stderr_data:
-                    full = b"".join(stderr_data).decode("utf-8", errors="replace")
-                    prog = _extract_progress(full)
-                    if prog:
-                        cur, total = prog
-                        pct = (cur / total) * 100
-                        progress.update(
-                            task,
-                            description=f"Cracking {display_essid}... "
-                                        f"{cur:,}/{total:,} keys tested ({pct:.1f}%)",
-                        )
-                    last_update = now
+                if now - last_switch >= 3:
+                    msg_idx = (msg_idx + 1) % len(messages)
+                    progress.update(task, description=messages[msg_idx])
+                    last_switch = now
 
                 if proc.poll() is not None:
                     break
                 time.sleep(0.05)
 
-            remaining_stdout, _ = proc.communicate(timeout=5)
-            if remaining_stdout:
-                stdout_raw.append(
-                    remaining_stdout.decode("utf-8", errors="replace")
-                )
-            result_stdout = "".join(stdout_raw)
+            remaining_stdout, _ = proc.communicate()
+            stdout_lines.append(remaining_stdout)
+            result_stdout = "".join(stdout_lines)
             progress.remove_task(task)
 
         if proc.returncode != 0 and "KEY FOUND!" not in result_stdout:
