@@ -6,7 +6,7 @@ import subprocess
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from src.console import console, colored_log, log_error
+from src.console import console, log_error
 from src.config import RESULTS_DIR
 from src.utils import sanitize_ssid
 
@@ -101,6 +101,14 @@ def parse_aircrack_failure_summary(output: str) -> dict:
     return parsed_info
 
 
+def _extract_progress(text: str) -> tuple[int, int] | None:
+    for part in reversed(text.split("\r")):
+        m = re.search(r"(\d+)/(\d+)\s+keys tested", part)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    return None
+
+
 def crack_handshake(
     handshake_path: str, wordlist_path: str, display_essid: str
 ) -> str | None:
@@ -112,20 +120,23 @@ def crack_handshake(
             ["aircrack-ng", "-w", wordlist_path, handshake_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding='utf-8',
-            errors='replace',
         )
 
-        stderr_lines = []
+        stderr_data = []
         def _read_stderr():
-            for line in iter(proc.stderr.readline, ""):
-                stderr_lines.append(line)
-        stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
-        stderr_thread.start()
+            fd = proc.stderr.fileno()
+            while True:
+                try:
+                    chunk = os.read(fd, 4096)
+                    if not chunk:
+                        break
+                    stderr_data.append(chunk)
+                except OSError:
+                    break
+        threading.Thread(target=_read_stderr, daemon=True).start()
 
         start_time = time.time()
-        stdout_lines = []
+        stdout_raw = []
 
         with Progress(
             SpinnerColumn("dots", style="cyan"),
@@ -139,16 +150,17 @@ def crack_handshake(
             while True:
                 line = proc.stdout.readline()
                 if line:
-                    stdout_lines.append(line)
-                    if "KEY FOUND!" in line:
+                    decoded = line.decode("utf-8", errors="replace")
+                    stdout_raw.append(decoded)
+                    if "KEY FOUND!" in decoded:
                         break
 
                 now = time.time()
-                if now - last_update >= 1 and stderr_lines:
-                    stderr_line = stderr_lines[-1]
-                    m = re.search(r"(\d+)/(\d+)\s+keys tested", stderr_line)
-                    if m:
-                        cur, total = int(m.group(1)), int(m.group(2))
+                if now - last_update >= 1 and stderr_data:
+                    full = b"".join(stderr_data).decode("utf-8", errors="replace")
+                    prog = _extract_progress(full)
+                    if prog:
+                        cur, total = prog
                         pct = (cur / total) * 100
                         progress.update(
                             task,
@@ -162,8 +174,11 @@ def crack_handshake(
                 time.sleep(0.05)
 
             remaining_stdout, _ = proc.communicate(timeout=5)
-            stdout_lines.append(remaining_stdout)
-            result_stdout = "".join(stdout_lines)
+            if remaining_stdout:
+                stdout_raw.append(
+                    remaining_stdout.decode("utf-8", errors="replace")
+                )
+            result_stdout = "".join(stdout_raw)
             progress.remove_task(task)
 
         if proc.returncode != 0 and "KEY FOUND!" not in result_stdout:
@@ -199,7 +214,7 @@ def crack_handshake(
                         + "_determined_final"
                     )
 
-                console.print(f"\n  [green]Password Found![/green]")
+                console.print(f"\n  [green]Password Found[/green]")
                 console.print(f"  [green]Network:[/green] {final_essid}")
                 console.print(f"  [green]Password:[/green] {password}")
                 console.print(f"  [dim]Time:[/dim] {time_str}")
