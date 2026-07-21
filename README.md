@@ -7,7 +7,6 @@ Audit WPA/WPA2 Wi-Fi security by cracking pre-captured handshakes. Fully automat
 - **Modular design** — Clean src/ structure for easy maintenance and future development.
 - **Auto-setup** — Automatically creates directories, checks dependencies, and downloads the wordlist.
 - **EAPOL validation** — Uses Scapy to check for valid M1+M2 handshake before cracking (rejects invalid captures).
-- **Real-time progress** — Shows keys tested count and percentage during cracking.
 - **Duplicate skipping** — Skips networks already cracked in previous runs.
 - **Queue processing** — Handles multiple .cap/.pcap files in batch.
 - **Auto-download wordlist** — Fetches latest `wifite.txt` from GitHub if missing.
