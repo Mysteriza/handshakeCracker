@@ -270,8 +270,12 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     mic = bytes(m2_ek.key_mic).hex()
     key_ver = m2_ek.key_descriptor_type_version
 
-    # Get raw EAPOL bytes from M2
+    # Get raw EAPOL bytes from M2 (trim to declared body length)
     eapol_raw_bytes = _extract_raw_eapol(m2_pkt)
+    declared_len = 4 + m2_pkt[EAPOL].len
+    if len(eapol_raw_bytes) > declared_len:
+        log_debug(f"convert_cap_to_hc22000: trimming EAPOL from {len(eapol_raw_bytes)} to {declared_len} (body len {m2_pkt[EAPOL].len})")
+        eapol_raw_bytes = eapol_raw_bytes[:declared_len]
 
     log_debug(f"convert_cap_to_hc22000: extracted ap_mac={ap_mac} sta_mac={sta_mac}")
     log_debug(f"convert_cap_to_hc22000: anonce_len={len(anonce) if anonce else 0} snonce_len={len(snonce) if snonce else 0} mic_len={len(mic) if mic else 0} key_ver={key_ver}")
