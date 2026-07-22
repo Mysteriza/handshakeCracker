@@ -53,11 +53,20 @@ def _clear_status():
 
 
 def _crack_worker(chunk_path: str, handshake_path: str, results: list, idx: int):
-    proc = subprocess.Popen(
-        ["aircrack-ng", "-w", chunk_path, handshake_path],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, encoding='utf-8', errors='replace',
-    )
+    try:
+        proc = subprocess.Popen(
+            ["aircrack-ng", "-w", chunk_path, handshake_path],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding='utf-8', errors='replace',
+        )
+    except OSError as e:
+        if getattr(e, 'winerror', None) == 225:
+            _clear_status()
+            console.print("  Windows Defender blocked aircrack-ng.exe. Add an exclusion in Windows Security, then re-run.")
+        else:
+            _clear_status()
+            console.print(f"  Failed to launch aircrack-ng: {e}")
+        return
     _active_procs.append(proc)
     try:
         import ctypes
@@ -139,11 +148,19 @@ def crack_handshake(
                     last_switch = now
                 time.sleep(0.1)
         else:
-            proc = subprocess.Popen(
-                ["aircrack-ng", "-w", wordlist_path, handshake_path],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding='utf-8', errors='replace',
-            )
+            try:
+                proc = subprocess.Popen(
+                    ["aircrack-ng", "-w", wordlist_path, handshake_path],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, encoding='utf-8', errors='replace',
+                )
+            except OSError as e:
+                _clear_status()
+                if getattr(e, 'winerror', None) == 225:
+                    console.print("  Windows Defender blocked aircrack-ng.exe. Add an exclusion, then re-run.")
+                else:
+                    console.print(f"  Failed to launch aircrack-ng: {e}")
+                return None
             _active_procs.append(proc)
             stdout, _ = proc.communicate()
             _active_procs.remove(proc)
