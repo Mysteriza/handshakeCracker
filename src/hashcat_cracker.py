@@ -389,11 +389,25 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         log_error("hashcat binary test threw exception", e)
         return None
 
+    log_debug(f"crack_with_hashcat: probing backend devices with -I")
+    try:
+        diag = subprocess.run(
+            [hc_exe, "-I", "--backend-devices"],
+            capture_output=True, text=True, timeout=60,
+            creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0,
+        )
+        device_out = f"stdout={diag.stdout[:1000]!r} stderr={diag.stderr[:1000]!r} rc={diag.returncode}"
+        _log_hashcat_output("hashcat -I (backend devices)", [device_out])
+        log_debug("crack_with_hashcat: hashcat -I result", device_out)
+    except Exception as e:
+        log_debug("crack_with_hashcat: hashcat -I failed", str(e))
+
     cmd = [
         hc_exe, "-m", "22000", "-a", "0",
         "--status", "--status-timer=1",
         "--potfile-path", potfile,
         "--quiet",
+        "--force",
         hc22000_path, wordlist_path,
     ]
 
@@ -485,9 +499,20 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             hashcat_output.append(f"[PROCESS EXIT CODE: {proc.returncode}]")
             _log_hashcat_output("HASHCAT OUTPUT", hashcat_output)
             log_debug(f"crack_with_hashcat: process exited rc={proc.returncode} total_lines={line_count}")
+            log_debug("crack_with_hashcat: hashcat stdout follows", " | ".join(hashcat_output))
             if proc.returncode != 0:
                 log_debug(f"crack_with_hashcat: non-zero return code, discarding password candidate")
                 password = None
+                log_debug("crack_with_hashcat: hashcat failed, running diagnostic without --quiet")
+                try:
+                    diag_cmd = [hc_exe, "-m", "22000", "-a", "0", "--potfile-path", potfile, "--force", hc22000_path, wordlist_path]
+                    diag = subprocess.run(diag_cmd, capture_output=True, text=True, timeout=120,
+                        creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0)
+                    diag_out = f"stdout={diag.stdout[:2000]!r} stderr={diag.stderr[:2000]!r} rc={diag.returncode}"
+                    _log_hashcat_output("DIAGNOSTIC (no --quiet)", [diag_out])
+                    log_debug("crack_with_hashcat: diagnostic run", diag_out)
+                except Exception as e2:
+                    log_debug("crack_with_hashcat: diagnostic also failed", str(e2))
 
         _clear_status()
 
