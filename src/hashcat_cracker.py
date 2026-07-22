@@ -396,22 +396,10 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     except Exception:
         pass
 
-    log_debug(f"crack_with_hashcat: probing backend devices with -I (cwd={hc_dir})")
-    try:
-        diag = subprocess.run(
-            [hc_exe, "-I"],
-            capture_output=True, text=True, timeout=60,
-            creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0,
-            cwd=hc_dir,
-        )
-        device_out = f"stdout={diag.stdout[:2000]!r} stderr={diag.stderr[:2000]!r} rc={diag.returncode}"
-        _log_hashcat_output("hashcat -I (backend devices)", [device_out])
-        log_debug("crack_with_hashcat: hashcat -I result", device_out)
-    except Exception as e:
-        log_debug("crack_with_hashcat: hashcat -I failed", str(e))
-
     cmd = [
         hc_exe, "-m", "22000", "-a", "0",
+        "-d", "1",
+        "-w", "3",
         "--potfile-path", potfile,
         "--quiet",
         "--force",
