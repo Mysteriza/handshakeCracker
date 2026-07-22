@@ -43,12 +43,12 @@ def _terminate_all():
 
 
 def _write_status(spin_char: str, msg: str):
-    sys.stdout.write(f"\r  {spin_char} {msg:<76}\r")
+    sys.stdout.write(f"\r\033[2K  {spin_char} {msg}\r")
     sys.stdout.flush()
 
 
 def _clear_status():
-    sys.stdout.write("\r" + " " * 80 + "\r")
+    sys.stdout.write("\r\033[2K\r")
     sys.stdout.flush()
 
 
