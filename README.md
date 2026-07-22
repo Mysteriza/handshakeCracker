@@ -2,6 +2,8 @@
 
 Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Windows + Linux), fully automatic setup.
 
+> **Note:** hashcat (GPU acceleration) is currently broken on Windows with NVIDIA GPUs — the OpenCL runtime hangs during kernel initialization. Falls back to aircrack-ng (CPU) automatically. PRs welcome if you know how to fix it.
+
 ## Screenshots
 <img width="1005" height="896" alt="22-07-2026_15-08" src="https://github.com/user-attachments/assets/43b236e3-3ba4-4525-afbe-1a5e0b28940d" />
 

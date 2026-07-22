@@ -120,14 +120,17 @@ def main():
         wordlist_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME
         )
+        wordlist_lines = 0
         if os.path.exists(wordlist_path):
-            n = 0
             with open(wordlist_path, 'r', encoding='utf-8', errors='replace') as f:
                 for _ in f:
-                    n += 1
-            colored_log("info", f"{n:,} passwords loaded.".replace(",", "."))
+                    wordlist_lines += 1
+            colored_log("info", f"{wordlist_lines:,} passwords loaded.".replace(",", "."))
         use_hashcat = has_discrete_gpu()
-        log_debug(f"main: has_discrete_gpu()={use_hashcat}")
+        if use_hashcat and wordlist_lines < 1_000_000 and wordlist_lines > 0:
+            colored_log("info", f"Wordlist under 1M lines ({wordlist_lines:,}) — using aircrack-ng (faster startup).")
+            use_hashcat = False
+        log_debug(f"main: has_discrete_gpu()={use_hashcat} wordlist_lines={wordlist_lines}")
         if use_hashcat:
             gpu_name = get_gpu_name()
             colored_log("info", f"Discrete GPU detected: {gpu_name or 'Unknown'}")
@@ -214,11 +217,18 @@ def main():
             console.print(f"Handshake {idx}/{len(deduped)}: {base_essid}")
 
             if use_hashcat:
-                log_debug(f"main: routing to hashcat for {base_essid}")
+                log_debug(f"main: routing to hashcat (device 1) for {base_essid}")
                 cracked = hashcat_crack_handshake(
-                    handshake_path, wordlist_path, base_essid
+                    handshake_path, wordlist_path, base_essid, device_id=1
                 )
-                log_debug(f"main: hashcat returned {cracked!r}")
+                log_debug(f"main: hashcat (device 1) returned {cracked!r}")
+                if cracked is None:
+                    colored_log("warning", "Hashcat device 1 failed — retrying with device 2.")
+                    log_debug(f"main: retrying hashcat with device 2 for {base_essid}")
+                    cracked = hashcat_crack_handshake(
+                        handshake_path, wordlist_path, base_essid, device_id=2
+                    )
+                    log_debug(f"main: hashcat (device 2) returned {cracked!r}")
                 if cracked is None:
                     colored_log("warning", "Hashcat failed — falling back to aircrack-ng.")
                     log_debug(f"main: falling back to aircrack-ng for {base_essid}")
