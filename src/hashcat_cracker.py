@@ -246,7 +246,9 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     essid_hex = essid.encode('utf-8', errors='replace').hex()
 
     if len(eapol_raw_bytes) < 81 + 16:
+        log_error("convert_cap_to_hc22000: EAPOL frame too short for MIC zeroing", Exception(f"len={len(eapol_raw_bytes)}"))
         return False
+
     eapol_bytes = bytearray(eapol_raw_bytes)
     eapol_bytes[81:97] = b'\x00' * 16
     eapol_hex = bytes(eapol_bytes).hex()
@@ -263,6 +265,7 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     with open(output_path, 'w') as f:
         f.write(line + '\n')
 
+    log_error(f"convert_cap_to_hc22000: OK essid={essid!r} ap={ap_mac_no_colon} sta={sta_mac_no_colon} anonce_len={len(anonce)} eapol_len={len(eapol_hex)}")
     return True
 
 
@@ -296,14 +299,46 @@ def _parse_progress(line: str) -> dict:
     return data
 
 
+def _log_hashcat_output(heading: str, lines: list[str]):
+    log_path = os.path.join(HCOV_DIR, "hashcat_debug.log")
+    try:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n=== {heading} ===\n")
+            for l in lines:
+                f.write(l + '\n')
+    except Exception:
+        pass
+
+
 def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str) -> str | None:
     start_time = time.time()
     hc_exe = get_hashcat_path()
     if not hc_exe:
+        log_error("crack_with_hashcat: hashcat binary not found")
         return None
 
     os.makedirs(HCOV_DIR, exist_ok=True)
     potfile = os.path.join(HCOV_DIR, "hashcat.potfile")
+
+    _log_hashcat_output("DIAG", [f"Hashcat EXE: {hc_exe}", f"hc22000: {hc22000_path}", f"wordlist: {wordlist_path}"])
+
+    try:
+        with open(hc22000_path, 'r') as _f:
+            content = _f.read().strip()
+        _log_hashcat_output("HC22000 content", [content[:300]])
+    except Exception as e:
+        log_error("Failed to read hc22000 file", e)
+        return None
+
+    try:
+        ver = subprocess.run([hc_exe, "--version"], capture_output=True, text=True, timeout=30)
+        _log_hashcat_output("hashcat --version", [ver.stdout.strip(), ver.stderr.strip(), f"rc={ver.returncode}"])
+        if ver.returncode != 0:
+            log_error("hashcat binary test failed", Exception(f"rc={ver.returncode} stderr={ver.stderr}"))
+            return None
+    except Exception as e:
+        log_error("hashcat binary test threw exception", e)
+        return None
 
     cmd = [
         hc_exe, "-m", "22000", "-a", "0",
@@ -312,6 +347,8 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         "--quiet",
         hc22000_path, wordlist_path,
     ]
+
+    _log_hashcat_output("COMMAND", [" ".join(cmd)])
 
     proc = None
     try:
@@ -345,9 +382,11 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         last_switch = time.time()
 
         password = None
+        hashcat_output: list[str] = []
 
         for raw_line in proc.stdout:
             line = raw_line.rstrip()
+            hashcat_output.append(line)
 
             if not line:
                 continue
@@ -387,6 +426,8 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
         if proc:
             proc.wait()
+            hashcat_output.append(f"[PROCESS EXIT CODE: {proc.returncode}]")
+            _log_hashcat_output("HASHCAT OUTPUT", hashcat_output)
             if proc.returncode != 0:
                 password = None
 
@@ -403,16 +444,25 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
         if os.path.exists(potfile):
             with open(potfile) as f:
-                for line in f:
-                    if ':' in line:
-                        idx = line.rfind(':')
-                        pw_candidate = line[idx + 1:].strip()
-                        if pw_candidate and len(pw_candidate) < 128:
-                            password = pw_candidate
-                            break
+                pot_content = f.read()
+            hashcat_output.append(f"[POTFILE content]: {pot_content.strip()[:200]}")
+            _log_hashcat_output("POTFILE CHECK", [pot_content.strip()[:300]])
+            for line in pot_content.splitlines():
+                if ':' in line:
+                    idx = line.rfind(':')
+                    pw_candidate = line[idx + 1:].strip()
+                    if pw_candidate and len(pw_candidate) < 128:
+                        password = pw_candidate
+                        break
 
+        if not password:
+            _log_hashcat_output("RESULT", ["No password found"])
+        return password
+
+    except FileNotFoundError as e:
+        _log_hashcat_output("CRASH", [f"FileNotFoundError: {e}"])
+        log_error("hashcat binary not found at path", e)
         return None
-
     except KeyboardInterrupt:
         if proc:
             try:
