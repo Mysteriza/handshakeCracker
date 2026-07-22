@@ -37,20 +37,20 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 ```bash
 git clone https://github.com/Mysteriza/handshakeCracker
 cd handshakeCracker
-python main.py
 ```
 
 The program auto-installs all dependencies on first run. No manual setup required.
-
-## Usage
-
+1. Place .cap/.pcap files in `handshakes/`
+2. Run the program:
 ```bash
 python main.py
 ```
 
-1. Place .cap/.pcap files in `handshakes/`
-2. Run the program
 3. It auto-detects GPU → uses hashcat (with aircrack-ng fallback), validates handshakes with Scapy, and cracks them
+
+## Usage
+
+
 
 ## Project Structure
 
