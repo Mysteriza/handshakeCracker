@@ -1,4 +1,4 @@
-name: Auto Version & Release
+name: Auto Release
 
 on:
   push:
@@ -23,16 +23,10 @@ jobs:
           PATCH=$(git rev-list "${LAST_TAG}..HEAD" --count 2>/dev/null || echo "0")
           echo "VERSION=${MAJOR_MINOR}.${PATCH}" >> $GITHUB_ENV
 
-      - name: Update version.txt
-        run: echo "${{ env.VERSION }}" > version.txt
-
-      - name: Commit & tag
+      - name: Create & push tag
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add version.txt
-          git diff --cached --quiet || git commit -m "chore: bump version to ${{ env.VERSION }} [skip ci]"
-          git push
           git tag -f "v${{ env.VERSION }}"
           git push origin "v${{ env.VERSION }}" --force
 

@@ -35,13 +35,24 @@ def _put_local_version(version: str):
 
 def _fetch_remote_version() -> str | None:
     try:
+        req = urllib.request.Request(
+            "https://api.github.com/repos/Mysteriza/handshakeCracker/releases/latest",
+            headers={"Accept": "application/vnd.github.v3+json"},
+        )
+        r = urllib.request.urlopen(req, timeout=10)
+        data = json.loads(r.read().decode("utf-8"))
+        tag = data.get("tag_name", "")
+        if tag.startswith("v"):
+            return tag[1:]
+        return tag
+    except Exception:
+        pass
+    try:
         r = urllib.request.urlopen(
-            "https://api.github.com/repos/Mysteriza/handshakeCracker/contents/version.txt",
+            "https://raw.githubusercontent.com/Mysteriza/handshakeCracker/main/version.txt",
             timeout=10,
         )
-        data = json.loads(r.read().decode("utf-8"))
-        import base64
-        return base64.b64decode(data["content"]).decode("utf-8").strip()
+        return r.read().decode("utf-8").strip()
     except Exception:
         return None
 
