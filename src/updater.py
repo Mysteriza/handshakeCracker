@@ -11,6 +11,9 @@ from src.console import console, colored_log
 _VERSION_URL = "https://raw.githubusercontent.com/Mysteriza/handshakeCracker/main/version.txt"
 _ZIP_URL = "https://github.com/Mysteriza/handshakeCracker/archive/main.zip"
 
+_remote_ver: str | None = None
+_local_ver: str | None = None
+
 
 def _read_local_version() -> str | None:
     try:
@@ -132,31 +135,44 @@ def _zip_update(root: str, remote_ver: str) -> bool:
 
 
 def check_for_updates() -> bool:
+    global _remote_ver, _local_ver
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    local_ver = _read_local_version()
-    remote_ver = _fetch_remote_version()
+    _local_ver = _read_local_version()
+    _remote_ver = _fetch_remote_version()
 
-    if remote_ver is None:
+    if _remote_ver is None:
         return False
 
-    if local_ver == remote_ver:
+    if _local_ver == _remote_ver:
         return False
 
-    colored_log("info", f"Update found: v{local_ver or '?'} -> v{remote_ver}")
+    colored_log("info", f"Update found: v{_local_ver or '?'} -> v{_remote_ver}")
 
     git_dir = os.path.join(root, ".git")
     if os.path.isdir(git_dir) and _git_update(root):
-        _put_local_version(remote_ver)
+        _put_local_version(_remote_ver)
         console.print("\n  Updated to the latest version!")
         console.print("  Please restart the program.\n")
         return True
 
     colored_log("info", "Trying direct download...")
-    if _zip_update(root, remote_ver):
-        _put_local_version(remote_ver)
+    if _zip_update(root, _remote_ver):
+        _put_local_version(_remote_ver)
         console.print("\n  Updated to the latest version!")
         console.print("  Please restart the program.\n")
         return True
 
     colored_log("warning", "Auto-update failed. Download manually from GitHub.")
     return False
+
+
+def show_version_info():
+    v = _local_ver or _read_local_version()
+    if not v:
+        return
+    if _remote_ver == v:
+        colored_log("info", f"You are on the latest version (v{v}).")
+    elif _remote_ver is not None:
+        colored_log("info", f"Update available: v{v} -> v{_remote_ver}. Restart to update.")
+    else:
+        colored_log("info", f"Current version: v{v}")
