@@ -58,16 +58,9 @@ def _get_error_log():
 
 
 def colored_log(level: str, message: str):
-    if level == "info":
-        console.print(f"[cyan]{message}[/cyan]")
-    elif level == "success":
-        console.print(f"[green]{message}[/green]")
-    elif level == "warning":
-        console.print(f"[yellow]{message}[/yellow]")
-    elif level == "error":
-        console.print(f"[red]{message}[/red]")
-    else:
-        console.print(message)
+    markers = {"info": " *", "success": " +", "warning": " !", "error": " -"}
+    prefix = markers.get(level, "  ")
+    console.print(f"{prefix} {message}")
 
 
 def log_error(message: str, error: Exception = None):

@@ -214,8 +214,11 @@ def crack_handshake(
     except KeyboardInterrupt:
         _clear_status()
         _terminate_all()
-        col = colored_log
-        col("warning", f"Cracking interrupted by user.")
+        try:
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+        except Exception:
+            pass
+        colored_log("warning", "Cracking interrupted by user.")
         return None
     except Exception as e:
         _terminate_all()
