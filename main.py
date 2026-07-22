@@ -123,6 +123,12 @@ def main():
         wordlist_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME
         )
+        if os.path.exists(wordlist_path):
+            n = 0
+            with open(wordlist_path, 'r', encoding='utf-8', errors='replace') as f:
+                for _ in f:
+                    n += 1
+            colored_log("info", f"{n:,} passwords loaded.".replace(",", "."))
 
         use_hashcat = has_discrete_gpu()
         if use_hashcat:
