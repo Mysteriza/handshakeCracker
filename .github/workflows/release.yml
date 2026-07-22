@@ -1,8 +1,8 @@
-name: Release
+name: Auto Version & Release
 
 on:
   push:
-    tags: [ 'v*' ]
+    branches: [main]
 
 permissions:
   contents: write
@@ -15,20 +15,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set version from tag
+      - name: Compute version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "$VERSION" > version.txt
+          LAST_TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo "v0.0.0")
+          MAJOR_MINOR=$(echo "$LAST_TAG" | sed 's/v\([0-9]*\.[0-9]*\)\..*/\1/')
+          [ -z "$MAJOR_MINOR" ] && MAJOR_MINOR="0.0"
+          PATCH=$(git rev-list "${LAST_TAG}..HEAD" --count 2>/dev/null || echo "0")
+          echo "VERSION=${MAJOR_MINOR}.${PATCH}" >> $GITHUB_ENV
 
-      - name: Commit version.txt
+      - name: Update version.txt
+        run: echo "${{ env.VERSION }}" > version.txt
+
+      - name: Commit & tag
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add version.txt
-          git commit -m "chore: bump version to ${GITHUB_REF_NAME#v} [skip ci]"
+          git diff --cached --quiet || git commit -m "chore: bump version to ${{ env.VERSION }} [skip ci]"
           git push
+          git tag -f "v${{ env.VERSION }}"
+          git push origin "v${{ env.VERSION }}" --force
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.VERSION }}
           generate_release_notes: true
