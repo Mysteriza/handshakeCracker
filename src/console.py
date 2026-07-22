@@ -1,6 +1,7 @@
 import datetime
 import sys
 import os
+import tempfile
 
 from rich.console import Console
 
@@ -39,9 +40,20 @@ _error_log_file = None
 
 def _get_error_log():
     global _error_log_file
-    if _error_log_file is None:
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        _error_log_file = f"error_log_{timestamp}.txt"
+    if _error_log_file is not None:
+        return _error_log_file
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    name = f"error_log_{timestamp}.txt"
+    for base in [os.getcwd(), tempfile.gettempdir()]:
+        try:
+            path = os.path.join(base, name)
+            with open(path, "a"):
+                pass
+            _error_log_file = path
+            return path
+        except (OSError, PermissionError):
+            continue
+    _error_log_file = os.path.join(tempfile.gettempdir(), name)
     return _error_log_file
 
 
