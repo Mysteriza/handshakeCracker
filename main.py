@@ -180,31 +180,37 @@ def main():
         )
 
         already_cracked = get_already_cracked_essids()
-        if already_cracked:
-            console.print(
-                f"Found {len(already_cracked)} previously cracked "
-                f"network(s). These will be skipped."
-            )
+        handshake_queue = [
+            p for p in handshake_queue
+            if sanitize_ssid(os.path.basename(p).replace(
+                ".cap", "").replace(".pcap", "")) not in already_cracked
+        ]
 
         handshake_queue.sort(key=lambda p: os.path.getsize(p), reverse=True)
 
-        for i, handshake_path in enumerate(handshake_queue):
-            console.print(f"\n{SEPARATOR}")
+        seen = set(already_cracked)
+        deduped = []
+        for p in handshake_queue:
+            safe = sanitize_ssid(os.path.basename(p).replace(
+                ".cap", "").replace(".pcap", ""))
+            if safe not in seen:
+                seen.add(safe)
+                deduped.append(p)
+
+        skipped_count = len(handshake_queue) - len(deduped)
+        if skipped_count:
             console.print(
-                f"Handshake {i+1}/{len(handshake_queue)}:"
-                f" {os.path.basename(handshake_path)}"
+                f"Skipped {skipped_count} previously cracked "
+                f"network(s). Processing {len(deduped)} remaining."
             )
 
+        for idx, handshake_path in enumerate(deduped, 1):
             base_essid = os.path.basename(handshake_path).replace(
                 ".cap", ""
             ).replace(".pcap", "")
-            safe_essid = sanitize_ssid(base_essid)
 
-            if safe_essid in already_cracked:
-                console.print(
-                    f"  Network: {base_essid} already processed. Skipping."
-                )
-                continue
+            console.print(f"\n{SEPARATOR}")
+            console.print(f"Handshake {idx}/{len(deduped)}: {base_essid}")
 
             if use_hashcat:
                 cracked = hashcat_crack_handshake(
@@ -222,10 +228,8 @@ def main():
 
             if cracked:
                 console.print(f"  Done.")
-                already_cracked.add(safe_essid)
             else:
                 console.print(f"  Failed.")
-                already_cracked.add(safe_essid)
 
         console.print(f"\n{SEPARATOR}")
         console.print("All handshakes have been processed!")
