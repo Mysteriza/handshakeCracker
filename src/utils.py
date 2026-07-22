@@ -40,16 +40,57 @@ def download_with_progress(url: str, dest: str, label: str = "Downloading") -> b
         urllib.request.urlretrieve(url, dest, report)
         sys.stdout.write("\n")
         return True
+    except KeyboardInterrupt:
+        sys.stdout.write("\n")
+        colored_log("warning", f"{label} interrupted by user.")
+        return False
     except Exception as e:
         log_error(f"Failed to download {url}", e)
         return False
 
 
+def extract_local_zip(zip_path: str, extract_to: str, subdir: str | None = None) -> bool:
+    try:
+        colored_log("info", f"Extracting {os.path.basename(zip_path)}...")
+        os.makedirs(extract_to, exist_ok=True)
+
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            for member in zf.namelist():
+                if subdir and not member.startswith(subdir):
+                    continue
+                rel_path = member[len(subdir):].lstrip('/') if subdir else member
+                if not rel_path:
+                    continue
+                target = os.path.join(extract_to, rel_path)
+                if member.endswith('/'):
+                    os.makedirs(target, exist_ok=True)
+                else:
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    with zf.open(member) as src, open(target, 'wb') as dst:
+                        dst.write(src.read())
+
+        colored_log("success", f"Extracted '{os.path.basename(zip_path)}'.")
+        return True
+    except KeyboardInterrupt:
+        colored_log("warning", "Extraction interrupted by user.")
+        return False
+    except Exception as e:
+        log_error(f"Failed to extract {zip_path}", e)
+        return False
+
+
 def download_wordlist(url: str, dest: str) -> bool:
     colored_log("info", "Wordlist not found. Downloading from GitHub...")
-    if download_with_progress(url, dest, "Downloading wordlist"):
+    result = download_with_progress(url, dest, "Downloading wordlist")
+    if result:
         colored_log("success", f"Wordlist ready: {dest}")
         return True
+    # Clean up partial on interrupt/failure
+    if os.path.exists(dest):
+        try:
+            os.remove(dest)
+        except OSError:
+            pass
     colored_log("error", "Failed to download wordlist. Check your internet connection.")
     return False
 
@@ -66,25 +107,7 @@ def download_and_extract_zip(url: str, extract_to: str, subdir: str | None = Non
             return False
 
         colored_log("info", "Extracting...")
-        os.makedirs(extract_to, exist_ok=True)
-
-        with zipfile.ZipFile(tmp_path, 'r') as zf:
-            for member in zf.namelist():
-                if subdir and not member.startswith(subdir):
-                    continue
-                rel_path = member[len(subdir):].lstrip('/') if subdir else member
-                if not rel_path:
-                    continue
-                target = os.path.join(extract_to, rel_path)
-                if member.endswith('/'):
-                    os.makedirs(target, exist_ok=True)
-                else:
-                    os.makedirs(os.path.dirname(target), exist_ok=True)
-                    with zf.open(member) as src, open(target, 'wb') as dst:
-                        dst.write(src.read())
-
-        colored_log("success", f"aircrack-ng extracted to '{extract_to}'.")
-        return True
+        return extract_local_zip(tmp_path, extract_to, subdir)
 
     except Exception as e:
         log_error("Failed to download/extract aircrack-ng", e)
@@ -93,3 +116,5 @@ def download_and_extract_zip(url: str, extract_to: str, subdir: str | None = Non
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+        elif tmp_path:
+            pass

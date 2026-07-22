@@ -8,9 +8,9 @@ from rich.text import Text
 from src.console import console, colored_log, log_error
 from src.config import (
     HANDSHAKES_DIR, RESULTS_DIR, WORDLIST_NAME, WORDLIST_URL,
-    AIRCRACK_WIN_URL, BIN_DIR,
+    AIRCRACK_WIN_URL, BIN_DIR, DEPS_DIR, AIRCRACK_ZIP_NAME,
 )
-from src.utils import download_wordlist, download_and_extract_zip
+from src.utils import download_wordlist, download_and_extract_zip, extract_local_zip
 
 
 def _find_exe_in_path(exe: str) -> str | None:
@@ -65,6 +65,17 @@ def ensure_aircrack() -> bool:
         if system == "Windows":
             root = os.path.dirname(os.path.abspath(__file__))
             bin_path = os.path.abspath(os.path.join(root, "..", BIN_DIR))
+
+            local_zip = os.path.abspath(os.path.join(root, "..", DEPS_DIR, AIRCRACK_ZIP_NAME))
+            if os.path.isfile(local_zip):
+                colored_log("info", "Found local aircrack-ng ZIP.")
+                if extract_local_zip(local_zip, bin_path, "aircrack-ng-1.7-win/bin"):
+                    found = _find_aircrack_anywhere()
+                    if found:
+                        _add_parent_to_path(found)
+                        return True
+                colored_log("warning", "Local ZIP extraction failed — trying download.")
+
             if download_and_extract_zip(AIRCRACK_WIN_URL, bin_path, "aircrack-ng-1.7-win/bin"):
                 found = _find_aircrack_anywhere()
                 if found:
