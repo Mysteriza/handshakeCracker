@@ -245,10 +245,10 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
 
     essid_hex = essid.encode('utf-8', errors='replace').hex()
 
+    if len(eapol_raw_bytes) < 81 + 16:
+        return False
     eapol_bytes = bytearray(eapol_raw_bytes)
-    MIC_OFFSET = 81
-    MIC_LENGTH = 16
-    eapol_bytes[MIC_OFFSET:MIC_OFFSET + MIC_LENGTH] = b'\x00' * MIC_LENGTH
+    eapol_bytes[81:97] = b'\x00' * 16
     eapol_hex = bytes(eapol_bytes).hex()
 
     ap_mac_no_colon = ap_mac.replace(":", "")
