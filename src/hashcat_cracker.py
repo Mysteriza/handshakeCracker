@@ -11,7 +11,7 @@ from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt
 from scapy.layers.eap import EAPOL, EAPOL_KEY
 
 from src.console import console, colored_log, log_error
-from src.config import BIN_DIR, HASHCAT_VERSION, HASHCAT_WIN_URL, HASHCAT_LINUX_URL, HCOV_DIR
+from src.config import BIN_DIR, HASHCAT_VERSION, HASHCAT_URL, HCOV_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME
 from src.utils import download_with_progress, sanitize_ssid
 
 
@@ -65,47 +65,36 @@ def ensure_hashcat() -> bool:
     dest_dir = os.path.join(root, BIN_DIR)
     os.makedirs(dest_dir, exist_ok=True)
 
-    colored_log("info", "Downloading hashcat...")
-
+    tmp_path = None
     try:
-        if _SYSTEM == "Windows":
+        local_archive = os.path.join(root, DEPS_DIR, HASHCAT_ARCHIVE_NAME)
+        if os.path.isfile(local_archive):
+            colored_log("info", f"Found local hashcat archive, extracting...")
             if not _ensure_py7zr():
-                colored_log("error", "Failed to install py7zr (needed to extract hashcat).")
                 return False
             import py7zr
-
-            tmp = tempfile.NamedTemporaryFile(suffix='.7z', delete=False)
-            tmp_path = tmp.name
-            tmp.close()
-
-            if not download_with_progress(HASHCAT_WIN_URL, tmp_path, "Downloading hashcat"):
-                os.unlink(tmp_path)
-                return False
-
-            colored_log("info", "Extracting hashcat...")
-            with py7zr.SevenZipFile(tmp_path, mode='r') as z:
+            with py7zr.SevenZipFile(local_archive, mode='r') as z:
                 z.extractall(path=dest_dir)
-            os.unlink(tmp_path)
+            if get_hashcat_path():
+                colored_log("success", f"hashcat {HASHCAT_VERSION} ready.")
+                return True
+            colored_log("warning", "Local hashcat extraction failed — trying download.")
 
-        elif _SYSTEM == "Linux":
-            import tarfile
-
-            tmp = tempfile.NamedTemporaryFile(suffix='.tar.xz', delete=False)
-            tmp_path = tmp.name
-            tmp.close()
-
-            if not download_with_progress(HASHCAT_LINUX_URL, tmp_path, "Downloading hashcat"):
-                os.unlink(tmp_path)
-                return False
-
-            colored_log("info", "Extracting hashcat...")
-            with tarfile.open(tmp_path, 'r:xz') as tar:
-                tar.extractall(path=dest_dir)
-            os.unlink(tmp_path)
-
-        else:
-            colored_log("error", f"Unsupported OS: {_SYSTEM}. Install hashcat manually.")
+        if not _ensure_py7zr():
+            colored_log("error", "Failed to install py7zr (needed to extract hashcat).")
             return False
+        import py7zr
+
+        tmp = tempfile.NamedTemporaryFile(suffix='.7z', delete=False)
+        tmp_path = tmp.name
+        tmp.close()
+
+        if not download_with_progress(HASHCAT_URL, tmp_path, "Downloading hashcat"):
+            return False
+
+        colored_log("info", "Extracting hashcat...")
+        with py7zr.SevenZipFile(tmp_path, mode='r') as z:
+            z.extractall(path=dest_dir)
 
         if get_hashcat_path():
             colored_log("success", f"hashcat {HASHCAT_VERSION} ready.")
@@ -114,9 +103,18 @@ def ensure_hashcat() -> bool:
         colored_log("error", "hashcat extraction completed but binary not found.")
         return False
 
+    except KeyboardInterrupt:
+        colored_log("warning", "Hashcat setup interrupted by user.")
+        return False
     except Exception as e:
         log_error("Failed to download/extract hashcat", e)
         return False
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 def add_bin_to_path():
@@ -308,6 +306,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         hc22000_path, wordlist_path,
     ]
 
+    proc = None
     try:
         proc = subprocess.Popen(
             cmd,
@@ -373,14 +372,14 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             if "Exhausted" in line or "Quit" in line or "Killed" in line:
                 break
 
-            # Cracked output: everything after last colon is the password
             if ":" in line:
                 idx = line.rfind(":")
                 pw_candidate = line[idx + 1:].strip()
                 if pw_candidate and len(pw_candidate) < 128:
                     password = pw_candidate
 
-        proc.wait()
+        if proc:
+            proc.wait()
 
         _clear_status()
 
@@ -393,7 +392,6 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             console.print(f"  Time: {time_str}")
             return password
 
-        # Check potfile for cracked hash
         if not password and os.path.exists(potfile):
             with open(potfile) as f:
                 for line in f:
@@ -406,7 +404,21 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
         return None
 
+    except KeyboardInterrupt:
+        if proc:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        _clear_status()
+        colored_log("warning", "Hashcat cracking interrupted by user.")
+        return None
     except Exception as e:
+        if proc:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
         log_error("Hashcat execution failed", e)
         _clear_status()
         return None

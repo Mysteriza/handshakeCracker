@@ -3,6 +3,7 @@ import re
 import sys
 import time
 import math
+import signal
 import threading
 import subprocess
 
@@ -28,6 +29,17 @@ def get_already_cracked_essids() -> set[str]:
 
 
 _SPINNER = ['-', '\\', '|', '/']
+_active_procs: list[subprocess.Popen] = []
+
+
+def _terminate_all():
+    for proc in _active_procs[:]:
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+        except Exception:
+            pass
+    _active_procs.clear()
 
 
 def _write_status(spin_char: str, msg: str):
@@ -46,6 +58,7 @@ def _crack_worker(chunk_path: str, handshake_path: str, results: list, idx: int)
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, encoding='utf-8', errors='replace',
     )
+    _active_procs.append(proc)
     try:
         import ctypes
         kernel32 = ctypes.windll.kernel32
@@ -55,14 +68,19 @@ def _crack_worker(chunk_path: str, handshake_path: str, results: list, idx: int)
             kernel32.CloseHandle(handle)
     except Exception:
         pass
-    stdout, _ = proc.communicate()
-    if "KEY FOUND!" in stdout:
-        results.append(stdout)
+    try:
+        stdout, _ = proc.communicate()
+        if "KEY FOUND!" in stdout:
+            results.append(stdout)
+    finally:
+        if proc in _active_procs:
+            _active_procs.remove(proc)
 
 
 def crack_handshake(
     handshake_path: str, wordlist_path: str, display_essid: str
 ) -> str | None:
+    chunk_paths: list[str] = []
     try:
         messages = [
             f"Cracking {display_essid}... Initializing packet analyzer...",
@@ -91,7 +109,6 @@ def crack_handshake(
             n = max(1, (os.cpu_count() or 2) // 2)
             chunk_size = math.ceil(total / n)
 
-            chunk_paths = []
             threads = []
             for i in range(n):
                 start = i * chunk_size
@@ -121,19 +138,15 @@ def crack_handshake(
                     msg_idx = (msg_idx + 1) % len(messages)
                     last_switch = now
                 time.sleep(0.1)
-
-            for cp in chunk_paths:
-                try:
-                    os.remove(cp)
-                except OSError:
-                    pass
         else:
             proc = subprocess.Popen(
                 ["aircrack-ng", "-w", wordlist_path, handshake_path],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding='utf-8', errors='replace',
             )
+            _active_procs.append(proc)
             stdout, _ = proc.communicate()
+            _active_procs.remove(proc)
             if "KEY FOUND!" in stdout:
                 found_results.append(stdout)
 
@@ -181,7 +194,22 @@ def crack_handshake(
         console.print(f"  Saved to: {result_file}")
         return password
 
+    except KeyboardInterrupt:
+        _clear_status()
+        _terminate_all()
+        col = colored_log
+        col("warning", f"Cracking interrupted by user.")
+        return None
     except Exception as e:
+        _terminate_all()
+        _clear_status()
         log_error(f"Critical error during cracking process for {handshake_path}", e)
         console.print(f"  Cracking terminated due to an unexpected error.")
         return None
+    finally:
+        for cp in chunk_paths:
+            try:
+                os.remove(cp)
+            except OSError:
+                pass
+        _terminate_all()
