@@ -7,7 +7,7 @@ import signal
 import threading
 import subprocess
 
-from src.console import console, log_error
+from src.console import console, colored_log, log_error
 from src.config import RESULTS_DIR
 from src.utils import sanitize_ssid
 
