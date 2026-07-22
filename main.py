@@ -32,7 +32,7 @@ except ImportError:
         sys.exit(1)
 
 
-from src.console import console, colored_log, log_error
+from src.console import console, colored_log, log_error, log_debug
 from src.config import HANDSHAKES_DIR, WORDLIST_NAME
 from src.utils import (
     sanitize_ssid,
@@ -127,15 +127,21 @@ def main():
                     n += 1
             colored_log("info", f"{n:,} passwords loaded.".replace(",", "."))
         use_hashcat = has_discrete_gpu()
+        log_debug(f"main: has_discrete_gpu()={use_hashcat}")
         if use_hashcat:
             gpu_name = get_gpu_name()
             colored_log("info", f"Discrete GPU detected: {gpu_name or 'Unknown'}")
             colored_log("info", "Will use hashcat (GPU accelerated cracking).")
+            log_debug(f"main: checking ensure_hashcat()")
             if not ensure_hashcat():
                 colored_log("warning", "hashcat setup failed — falling back to CPU (aircrack-ng).")
+                log_debug("main: ensure_hashcat() returned False, falling back to aircrack-ng")
                 use_hashcat = False
+            else:
+                log_debug("main: ensure_hashcat() returned True, using hashcat")
         else:
             colored_log("info", "No discrete GPU detected — using CPU (aircrack-ng).")
+            log_debug("main: has_discrete_gpu() returned False, using aircrack-ng")
 
         session = PromptSession(history=InMemoryHistory())
 
@@ -208,18 +214,24 @@ def main():
             console.print(f"Handshake {idx}/{len(deduped)}: {base_essid}")
 
             if use_hashcat:
+                log_debug(f"main: routing to hashcat for {base_essid}")
                 cracked = hashcat_crack_handshake(
                     handshake_path, wordlist_path, base_essid
                 )
+                log_debug(f"main: hashcat returned {cracked!r}")
                 if cracked is None:
                     colored_log("warning", "Hashcat failed — falling back to aircrack-ng.")
+                    log_debug(f"main: falling back to aircrack-ng for {base_essid}")
                     cracked = crack_handshake(
                         handshake_path, wordlist_path, base_essid
                     )
+                    log_debug(f"main: aircrack-ng returned {cracked!r}")
             else:
+                log_debug(f"main: routing to aircrack-ng for {base_essid}")
                 cracked = crack_handshake(
                     handshake_path, wordlist_path, base_essid
                 )
+                log_debug(f"main: aircrack-ng returned {cracked!r}")
 
             if cracked:
                 console.print(f"  Done.")
