@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import subprocess
@@ -8,7 +9,6 @@ import zipfile
 
 from src.console import console, colored_log
 
-_VERSION_URL = "https://raw.githubusercontent.com/Mysteriza/handshakeCracker/main/version.txt"
 _ZIP_URL = "https://github.com/Mysteriza/handshakeCracker/archive/main.zip"
 
 _remote_ver: str | None = None
@@ -35,8 +35,13 @@ def _put_local_version(version: str):
 
 def _fetch_remote_version() -> str | None:
     try:
-        r = urllib.request.urlopen(_VERSION_URL, timeout=10)
-        return r.read().decode("utf-8").strip()
+        r = urllib.request.urlopen(
+            "https://api.github.com/repos/Mysteriza/handshakeCracker/contents/version.txt",
+            timeout=10,
+        )
+        data = json.loads(r.read().decode("utf-8"))
+        import base64
+        return base64.b64decode(data["content"]).decode("utf-8").strip()
     except Exception:
         return None
 
