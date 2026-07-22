@@ -1,4 +1,4 @@
-# Wi-Fi Handshake Cracker — v1.0.0
+# Wi-Fi Handshake Cracker
 
 Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Windows + Linux), fully automatic setup.
 
