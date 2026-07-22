@@ -13,6 +13,7 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 - **Dynamic parallelism** — CPU mode uses 50% of cores at BELOW_NORMAL priority
 - **Error logging** — All errors written to timestamped `error_log_*.txt`
 - **Permission resilient** — Falls back to `%TEMP%` automatically if the project directory isn't writable
+- **Auto-update** — Checks GitHub for updates on startup and pulls latest code automatically
 
 ## Performance
 
@@ -67,6 +68,7 @@ handshakeCracker/
     ├── gpu.py           # Discrete GPU detection
     ├── cracker.py       # Aircrack-ng cracking (CPU fallback)
     ├── hashcat_cracker.py  # Hashcat cracking + .cap → .hc22000 converter
+    ├── updater.py       # Auto-update via git pull
     └── setup.py         # OS detection, auto-setup
 ```
 
