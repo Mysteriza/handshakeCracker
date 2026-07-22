@@ -114,10 +114,18 @@ def show_banner():
 
 
 def ensure_directories() -> bool:
-    os.makedirs(RESULTS_DIR, exist_ok=True)
+    try:
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+    except (OSError, PermissionError):
+        colored_log("error", f"Cannot create results directory: {RESULTS_DIR}")
+        return False
 
     if not os.path.exists(HANDSHAKES_DIR):
-        os.makedirs(HANDSHAKES_DIR)
+        try:
+            os.makedirs(HANDSHAKES_DIR)
+        except (OSError, PermissionError):
+            colored_log("warning", f"Cannot create '{HANDSHAKES_DIR}' dir.")
+            return True
 
     has_cap = any(
         f.lower().endswith(('.cap', '.pcap'))
