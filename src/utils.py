@@ -5,7 +5,7 @@ import tempfile
 import urllib.request
 import zipfile
 
-from src.console import console, colored_log, log_error
+from src.console import colored_log, log_error
 
 
 
