@@ -390,6 +390,12 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         log_error("hashcat binary test threw exception", e)
         return None
 
+    log_debug("crack_with_hashcat: killing any lingering hashcat process")
+    try:
+        subprocess.run(["taskkill", "/f", "/im", "hashcat.exe"], capture_output=True, timeout=10)
+    except Exception:
+        pass
+
     log_debug(f"crack_with_hashcat: probing backend devices with -I (cwd={hc_dir})")
     try:
         diag = subprocess.run(
