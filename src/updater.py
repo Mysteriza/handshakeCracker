@@ -139,6 +139,13 @@ def _zip_update(root: str, remote_ver: str) -> bool:
             pass
 
 
+def _parse_ver(v: str) -> tuple:
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except Exception:
+        return (0,)
+
+
 def check_for_updates() -> bool:
     global _remote_ver, _local_ver
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -148,7 +155,10 @@ def check_for_updates() -> bool:
     if _remote_ver is None:
         return False
 
-    if _local_ver == _remote_ver:
+    if _local_ver is None:
+        return False
+
+    if _parse_ver(_remote_ver) <= _parse_ver(_local_ver):
         return False
 
     colored_log("info", f"Update found: v{_local_ver or '?'} -> v{_remote_ver}")
@@ -175,9 +185,11 @@ def show_version_info():
     v = _local_ver or _read_local_version()
     if not v:
         return
-    if _remote_ver == v:
-        colored_log("info", f"You are on the latest version (v{v}).")
-    elif _remote_ver is not None:
-        colored_log("info", f"Update available: v{v} -> v{_remote_ver}. Restart to update.")
-    else:
+    if _remote_ver is None:
         colored_log("info", f"Current version: v{v}")
+    elif _parse_ver(_remote_ver) > _parse_ver(v):
+        colored_log("info", f"Update available: v{v} -> v{_remote_ver}. Restart to update.")
+    elif _parse_ver(_remote_ver) < _parse_ver(v):
+        colored_log("info", f"You are on a development version (v{v}).")
+    else:
+        colored_log("info", f"You are on the latest version (v{v}).")
