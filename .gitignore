@@ -7,3 +7,5 @@
 error_log_*.txt
 /hc22000_cache/
 *.commit_hash
+hashcat-*.zip
+hashcat-*.7z
