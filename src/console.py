@@ -63,13 +63,24 @@ def colored_log(level: str, message: str):
     console.print(f"{prefix} {message}")
 
 
-def log_error(message: str, error: Exception = None):
+def _log_raw(prefix: str, message: str, data=None):
     error_log = _get_error_log()
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_message = f"[{timestamp}] ERROR: {message}"
-    if error:
-        log_message += f" - Exception: {type(error).__name__}: {error}"
+    log_message = f"[{timestamp}] {prefix}: {message}"
+    if data is not None:
+        log_message += f" - {data}"
     with open(error_log, "a") as f:
         f.write(log_message + "\n")
+
+
+def log_debug(message: str, data=None):
+    _log_raw("DEBUG", message, data)
+
+
+def log_error(message: str, error: Exception = None):
+    extra = ""
     if error:
-        colored_log("error", f"An error occurred. Details logged to {error_log}")
+        extra = f" - Exception: {type(error).__name__}: {error}"
+    _log_raw("ERROR", message, extra.strip("- ") if extra else None)
+    if error:
+        colored_log("error", f"An error occurred. Details logged to {_get_error_log()}")

@@ -10,7 +10,7 @@ from scapy.all import rdpcap
 from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt
 from scapy.layers.eap import EAPOL, EAPOL_KEY
 
-from src.console import console, colored_log, log_error
+from src.console import console, colored_log, log_error, log_debug
 from src.config import BIN_DIR, HASHCAT_VERSION, HASHCAT_URL, HCOV_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME
 from src.utils import download_with_progress
 
@@ -34,42 +34,57 @@ def get_hashcat_path() -> str | None:
     exe = "hashcat.exe" if _SYSTEM == "Windows" else "hashcat"
     found = _find_in_path(exe)
     if found:
+        log_debug(f"get_hashcat_path: found in PATH: {found}")
         return found
     root = _get_root()
     local = os.path.join(root, BIN_DIR, f"hashcat-{HASHCAT_VERSION}", exe)
     if os.path.isfile(local):
+        log_debug(f"get_hashcat_path: found locally: {local}")
         return local
+    log_debug(f"get_hashcat_path: not found (checked PATH and {local})")
     return None
 
 
 def _extract_archive(archive: str, dest: str) -> bool:
+    log_debug(f"_extract_archive: archive={archive} dest={dest}")
     if archive.endswith('.zip'):
         try:
             import zipfile
             with zipfile.ZipFile(archive, 'r') as z:
                 z.extractall(path=dest)
+            log_debug("_extract_archive: zip extraction OK")
             return True
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug("_extract_archive: zip extraction failed", str(e))
 
     try:
         sz = os.path.join(dest, "7zr.exe")
         if not os.path.isfile(sz):
             colored_log("info", "Downloading 7-Zip standalone extractor...")
+            log_debug("_extract_archive: downloading 7zr.exe")
             from src.utils import download_with_progress
             download_with_progress(
                 "https://www.7-zip.org/a/7zr.exe", sz,
                 "Downloading 7zr")
+        log_debug(f"_extract_archive: extracting with 7zr from {archive}")
         r = subprocess.run(
             [sz, "x", archive, f"-o{dest}", "-y"],
             capture_output=True, text=True, timeout=120)
-        return r.returncode == 0
-    except Exception:
+        ok = r.returncode == 0
+        log_debug(f"_extract_archive: 7zr exit code={r.returncode} ok={ok}")
+        if not ok:
+            log_debug("_extract_archive: 7zr stderr", r.stderr[:500])
+        return ok
+    except Exception as e:
+        log_debug("_extract_archive: 7zr exception", str(e))
         return False
 
 
 def ensure_hashcat() -> bool:
-    if get_hashcat_path():
+    found = get_hashcat_path()
+    log_debug(f"ensure_hashcat: get_hashcat_path() returned {found!r}")
+    if found:
+        log_debug("ensure_hashcat: hashcat already available")
         return True
 
     root = _get_root()
@@ -79,20 +94,26 @@ def ensure_hashcat() -> bool:
     tmp_path = None
     try:
         local_archive = os.path.join(root, DEPS_DIR, HASHCAT_ARCHIVE_NAME)
+        log_debug(f"ensure_hashcat: checking local archive: {local_archive} exists={os.path.isfile(local_archive)}")
         if os.path.isfile(local_archive):
             colored_log("info", f"Found local hashcat archive, extracting...")
-            if _extract_archive(local_archive, dest_dir):
-                if get_hashcat_path():
-                    colored_log("success", f"hashcat {HASHCAT_VERSION} ready.")
-                    return True
+            ok = _extract_archive(local_archive, dest_dir)
+            log_debug(f"ensure_hashcat: local extraction result={ok}")
+            if ok and get_hashcat_path():
+                colored_log("success", f"hashcat {HASHCAT_VERSION} ready.")
+                return True
             colored_log("warning", "Local hashcat extraction failed — trying download.")
 
+        log_debug(f"ensure_hashcat: downloading from {HASHCAT_URL}")
         tmp = tempfile.NamedTemporaryFile(suffix='.7z', delete=False)
         tmp_path = tmp.name
         tmp.close()
+        log_debug(f"ensure_hashcat: temp download path: {tmp_path}")
 
         if not download_with_progress(HASHCAT_URL, tmp_path, "Downloading hashcat"):
+            log_error("ensure_hashcat: download failed")
             return False
+        log_debug("ensure_hashcat: download OK, extracting")
 
         colored_log("info", "Extracting hashcat...")
         if _extract_archive(tmp_path, dest_dir):
@@ -113,6 +134,7 @@ def ensure_hashcat() -> bool:
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.unlink(tmp_path)
+                log_debug("ensure_hashcat: cleaned up temp file")
             except OSError:
                 pass
 
@@ -122,7 +144,13 @@ def add_bin_to_path():
     if hc:
         parent = os.path.dirname(hc)
         if parent not in os.environ.get("PATH", ""):
-            os.environ["PATH"] = parent + os.pathsep + os.environ.get("PATH", "")
+            old = os.environ.get("PATH", "")
+            os.environ["PATH"] = parent + os.pathsep + old
+            log_debug(f"add_bin_to_path: prepended {parent} to PATH")
+        else:
+            log_debug(f"add_bin_to_path: {parent} already in PATH")
+    else:
+        log_debug("add_bin_to_path: hashcat not found, nothing to add")
 
 
 def _classify_eapol(ek) -> str | None:
@@ -165,11 +193,14 @@ def _extract_raw_eapol(pkt) -> bytes | None:
 
 
 def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
+    log_debug(f"convert_cap_to_hc22000: reading {cap_path}")
     try:
         packets = rdpcap(cap_path)
     except Exception as e:
         log_error(f"Failed to read {cap_path}", e)
         return False
+
+    log_debug(f"convert_cap_to_hc22000: loaded {len(packets)} packet(s) from cap")
 
     essid = ""
     ap_mac = None
@@ -181,9 +212,11 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     eapol_raw_bytes = None
 
     frames = {}
+    beacon_count = 0
 
     for pkt in packets:
         if pkt.haslayer(Dot11Beacon):
+            beacon_count += 1
             elt = pkt[Dot11Elt]
             while elt:
                 if elt.ID == 0 and elt.info:
@@ -203,7 +236,10 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
         if msg:
             frames[msg] = pkt
 
+    log_debug(f"convert_cap_to_hc22000: beacons={beacon_count} EAPOL frames found={list(frames.keys())}")
+
     if "M2" not in frames:
+        log_debug("convert_cap_to_hc22000: M2 not found in capture")
         return False
 
     # Get MACs
@@ -237,7 +273,12 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     # Get raw EAPOL bytes from M2
     eapol_raw_bytes = _extract_raw_eapol(m2_pkt)
 
+    log_debug(f"convert_cap_to_hc22000: extracted ap_mac={ap_mac} sta_mac={sta_mac}")
+    log_debug(f"convert_cap_to_hc22000: anonce_len={len(anonce) if anonce else 0} snonce_len={len(snonce) if snonce else 0} mic_len={len(mic) if mic else 0} key_ver={key_ver}")
+    log_debug(f"convert_cap_to_hc22000: eapol_raw_bytes_len={len(eapol_raw_bytes) if eapol_raw_bytes else 0}")
+
     if not all([ap_mac, sta_mac, anonce, snonce, mic, key_ver, eapol_raw_bytes]):
+        log_debug(f"convert_cap_to_hc22000: validation failed - missing fields: ap={bool(ap_mac)} sta={bool(sta_mac)} anonce={bool(anonce)} snonce={bool(snonce)} mic={bool(mic)} kv={bool(key_ver)} eapol={bool(eapol_raw_bytes)}")
         return False
 
     if not essid:
@@ -250,8 +291,10 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
         return False
 
     eapol_bytes = bytearray(eapol_raw_bytes)
+    orig_mic = bytes(eapol_bytes[81:97]).hex()
     eapol_bytes[81:97] = b'\x00' * 16
     eapol_hex = bytes(eapol_bytes).hex()
+    log_debug(f"convert_cap_to_hc22000: zeroed MIC in EAPOL frame original_mic_start={orig_mic[:16]}...")
 
     ap_mac_no_colon = ap_mac.replace(":", "")
     sta_mac_no_colon = sta_mac.replace(":", "")
@@ -261,11 +304,12 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
         f"{anonce}*{eapol_hex}*00"
     )
 
+    log_debug(f"convert_cap_to_hc22000: writing hc22000 file to {output_path}")
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, 'w') as f:
         f.write(line + '\n')
 
-    log_error(f"convert_cap_to_hc22000: OK essid={essid!r} ap={ap_mac_no_colon} sta={sta_mac_no_colon} anonce_len={len(anonce)} eapol_len={len(eapol_hex)}")
+    log_debug(f"convert_cap_to_hc22000: OK essid={essid!r} ap={ap_mac_no_colon} sta={sta_mac_no_colon} anonce_len={len(anonce)} eapol_len={len(eapol_hex)}")
     return True
 
 
@@ -313,12 +357,14 @@ def _log_hashcat_output(heading: str, lines: list[str]):
 def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str) -> str | None:
     start_time = time.time()
     hc_exe = get_hashcat_path()
+    log_debug(f"crack_with_hashcat: start hc_exe={hc_exe!r} hc22000={hc22000_path} wordlist={wordlist_path}")
     if not hc_exe:
         log_error("crack_with_hashcat: hashcat binary not found")
         return None
 
     os.makedirs(HCOV_DIR, exist_ok=True)
     potfile = os.path.join(HCOV_DIR, "hashcat.potfile")
+    log_debug(f"crack_with_hashcat: potfile={potfile}")
 
     _log_hashcat_output("DIAG", [f"Hashcat EXE: {hc_exe}", f"hc22000: {hc22000_path}", f"wordlist: {wordlist_path}"])
 
@@ -326,13 +372,16 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         with open(hc22000_path, 'r') as _f:
             content = _f.read().strip()
         _log_hashcat_output("HC22000 content", [content[:300]])
+        log_debug(f"crack_with_hashcat: hc22000 file length={len(content)} starts_with={content[:80]}")
     except Exception as e:
         log_error("Failed to read hc22000 file", e)
         return None
 
     try:
+        log_debug(f"crack_with_hashcat: testing hashcat binary with --version")
         ver = subprocess.run([hc_exe, "--version"], capture_output=True, text=True, timeout=30)
         _log_hashcat_output("hashcat --version", [ver.stdout.strip(), ver.stderr.strip(), f"rc={ver.returncode}"])
+        log_debug(f"crack_with_hashcat: hashcat --version stdout={ver.stdout.strip()!r} stderr={ver.stderr.strip()!r} rc={ver.returncode}")
         if ver.returncode != 0:
             log_error("hashcat binary test failed", Exception(f"rc={ver.returncode} stderr={ver.stderr}"))
             return None
@@ -348,7 +397,9 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         hc22000_path, wordlist_path,
     ]
 
-    _log_hashcat_output("COMMAND", [" ".join(cmd)])
+    cmd_str = " ".join(cmd)
+    _log_hashcat_output("COMMAND", [cmd_str])
+    log_debug(f"crack_with_hashcat: running command: {cmd_str}")
 
     proc = None
     try:
@@ -358,6 +409,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             text=True, encoding='utf-8', errors='replace',
             creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0,
         )
+        log_debug(f"crack_with_hashcat: subprocess started pid={proc.pid}")
 
         if _SYSTEM == "Windows":
             try:
@@ -366,9 +418,10 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
                 h = k32.OpenProcess(0x1F0FFF, False, proc.pid)
                 if h:
                     k32.SetPriorityClass(h, 0x00004000)
+                    log_debug("crack_with_hashcat: set BELOW_NORMAL priority")
                     k32.CloseHandle(h)
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug("crack_with_hashcat: failed to set priority", str(e))
 
         msg_queue = [
             f"Hashcat cracking {display_essid}... Initializing...",
@@ -383,9 +436,11 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
         password = None
         hashcat_output: list[str] = []
+        line_count = 0
 
         for raw_line in proc.stdout:
             line = raw_line.rstrip()
+            line_count += 1
             hashcat_output.append(line)
 
             if not line:
@@ -416,6 +471,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
                 continue
 
             if "Exhausted" in line or "Quit" in line or "Killed" in line:
+                log_debug(f"crack_with_hashcat: hashcat terminated with status: {line}")
                 break
 
             if ":" in line:
@@ -428,7 +484,9 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             proc.wait()
             hashcat_output.append(f"[PROCESS EXIT CODE: {proc.returncode}]")
             _log_hashcat_output("HASHCAT OUTPUT", hashcat_output)
+            log_debug(f"crack_with_hashcat: process exited rc={proc.returncode} total_lines={line_count}")
             if proc.returncode != 0:
+                log_debug(f"crack_with_hashcat: non-zero return code, discarding password candidate")
                 password = None
 
         _clear_status()
@@ -437,7 +495,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             elapsed = time.time() - start_time
             m, s = divmod(int(elapsed), 60)
             time_str = f"{m:02d}:{s:02d}"
-
+            log_debug(f"crack_with_hashcat: FOUND password={password!r} time={time_str}")
             console.print(f"  Password: {password}")
             console.print(f"  Time: {time_str}")
             return password
@@ -447,16 +505,21 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
                 pot_content = f.read()
             hashcat_output.append(f"[POTFILE content]: {pot_content.strip()[:200]}")
             _log_hashcat_output("POTFILE CHECK", [pot_content.strip()[:300]])
+            log_debug(f"crack_with_hashcat: checking potfile len={len(pot_content)}")
             for line in pot_content.splitlines():
                 if ':' in line:
                     idx = line.rfind(':')
                     pw_candidate = line[idx + 1:].strip()
                     if pw_candidate and len(pw_candidate) < 128:
                         password = pw_candidate
+                        log_debug(f"crack_with_hashcat: found candidate in potfile: {password!r}")
                         break
+        else:
+            log_debug("crack_with_hashcat: potfile does not exist")
 
         if not password:
             _log_hashcat_output("RESULT", ["No password found"])
+            log_debug("crack_with_hashcat: returning None (no password)")
         return password
 
     except FileNotFoundError as e:
@@ -486,9 +549,13 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 def hashcat_crack_handshake(
     handshake_path: str, wordlist_path: str, display_essid: str
 ) -> str | None:
+    log_debug(f"hashcat_crack_handshake: start handshake={handshake_path} wordlist={wordlist_path} essid={display_essid!r}")
+
     if not ensure_hashcat():
+        log_debug("hashcat_crack_handshake: ensure_hashcat returned False, aborting")
         return None
 
+    log_debug("hashcat_crack_handshake: ensure_hashcat OK")
     add_bin_to_path()
 
     colored_log("info", "Converting .cap to hashcat format (hc22000)...")
@@ -496,16 +563,21 @@ def hashcat_crack_handshake(
         HCOV_DIR,
         os.path.basename(handshake_path).replace(".cap", "").replace(".pcap", "") + ".hc22000"
     )
+    log_debug(f"hashcat_crack_handshake: hc22000 output path: {hc22000_path}")
 
     if not convert_cap_to_hc22000(handshake_path, hc22000_path):
         colored_log("error", "Failed to convert .cap to hc22000 format.")
+        log_debug("hashcat_crack_handshake: convert_cap_to_hc22000 returned False")
         return None
 
+    log_debug("hashcat_crack_handshake: conversion OK, calling crack_with_hashcat")
     result = crack_with_hashcat(hc22000_path, wordlist_path, display_essid)
+    log_debug(f"hashcat_crack_handshake: crack_with_hashcat returned {result!r}")
 
     # Cleanup
     try:
         os.remove(hc22000_path)
+        log_debug(f"hashcat_crack_handshake: cleaned up temp file {hc22000_path}")
     except OSError:
         pass
 
