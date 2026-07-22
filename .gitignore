@@ -7,3 +7,4 @@
 *.zip
 error_log_*.txt
 /hc22000_cache/
+*.commit_hash
