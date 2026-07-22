@@ -229,7 +229,7 @@ def main():
 
         console.print(f"\n{SEPARATOR}")
         console.print("All handshakes have been processed!")
-        console.print("Program finished. Exiting.")
+        console.print("Program finished. Exiting.\n")
 
     except KeyboardInterrupt:
         colored_log("warning", "Program interrupted by user (Ctrl+C). Exiting gracefully.")
