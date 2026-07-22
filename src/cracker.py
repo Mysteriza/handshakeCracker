@@ -36,7 +36,7 @@ def _terminate_all():
     for proc in _active_procs[:]:
         try:
             if proc.poll() is None:
-                proc.terminate()
+                proc.kill()
         except Exception:
             pass
     _active_procs.clear()
@@ -211,15 +211,6 @@ def crack_handshake(
         console.print(f"  Saved to: {result_file}")
         return password
 
-    except KeyboardInterrupt:
-        _clear_status()
-        _terminate_all()
-        try:
-            signal.signal(signal.SIGINT, signal.SIG_IGN)
-        except Exception:
-            pass
-        colored_log("warning", "Cracking interrupted by user.")
-        return None
     except Exception as e:
         _terminate_all()
         _clear_status()
