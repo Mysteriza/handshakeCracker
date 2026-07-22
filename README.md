@@ -2,6 +2,9 @@
 
 Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Windows + Linux), fully automatic setup.
 
+## Screenshots
+<img width="1005" height="896" alt="22-07-2026_15-08" src="https://github.com/user-attachments/assets/43b236e3-3ba4-4525-afbe-1a5e0b28940d" />
+
 ## Features
 
 - **GPU acceleration** — Auto-detects discrete GPU (NVIDIA/AMD) and cracks via hashcat (100-300k PMK/s); falls back to CPU aircrack-ng if no GPU found
