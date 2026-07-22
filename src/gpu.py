@@ -11,6 +11,7 @@ def _get_gpu_list_powershell() -> list[dict]:
     cmd = [
         "powershell", "-NoProfile", "-Command",
         "Get-CimInstance Win32_VideoController | "
+        "Where-Object { $_.ConfigManagerErrorCode -eq 0 } | "
         "Select-Object Name, AdapterRAM | "
         "ConvertTo-Csv -NoTypeInformation"
     ]
@@ -18,6 +19,7 @@ def _get_gpu_list_powershell() -> list[dict]:
     if r.returncode != 0 or not r.stdout.strip():
         cmd[2] = (
             "Get-WmiObject Win32_VideoController | "
+            "Where-Object { $_.ConfigManagerErrorCode -eq 0 } | "
             "Select-Object Name, AdapterRAM | "
             "ConvertTo-Csv -NoTypeInformation"
         )
