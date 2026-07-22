@@ -12,6 +12,7 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 - **Duplicate skip** — Skips networks already cracked in previous runs
 - **Dynamic parallelism** — CPU mode uses 50% of cores at BELOW_NORMAL priority
 - **Error logging** — All errors written to timestamped `error_log_*.txt`
+- **Permission resilient** — Falls back to `%TEMP%` automatically if the project directory isn't writable
 
 ## Performance
 
@@ -32,7 +33,6 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 ```bash
 git clone https://github.com/Mysteriza/handshakeCracker
 cd handshakeCracker
-git checkout feature/hashcat-integration
 python main.py
 ```
 
