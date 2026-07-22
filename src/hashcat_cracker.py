@@ -243,13 +243,20 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     if not essid:
         essid = "Unknown"
 
-    pmkid = "00" * 16
     essid_hex = essid.encode('utf-8', errors='replace').hex()
-    eapol_hex = eapol_raw_bytes.hex()
+
+    eapol_bytes = bytearray(eapol_raw_bytes)
+    MIC_OFFSET = 81
+    MIC_LENGTH = 16
+    eapol_bytes[MIC_OFFSET:MIC_OFFSET + MIC_LENGTH] = b'\x00' * MIC_LENGTH
+    eapol_hex = bytes(eapol_bytes).hex()
+
+    ap_mac_no_colon = ap_mac.replace(":", "")
+    sta_mac_no_colon = sta_mac.replace(":", "")
 
     line = (
-        f"WPA*01*{pmkid}*{ap_mac}*{sta_mac}*{essid_hex}*"
-        f"{anonce}*{snonce}*{mic}*{key_ver}*{eapol_hex}*"
+        f"WPA*02*{mic}*{ap_mac_no_colon}*{sta_mac_no_colon}*{essid_hex}*"
+        f"{anonce}*{eapol_hex}*00"
     )
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
