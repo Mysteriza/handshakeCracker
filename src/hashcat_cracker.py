@@ -362,11 +362,12 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         log_error("crack_with_hashcat: hashcat binary not found")
         return None
 
+    hc_dir = os.path.dirname(hc_exe)
     os.makedirs(HCOV_DIR, exist_ok=True)
     potfile = os.path.join(HCOV_DIR, "hashcat.potfile")
-    log_debug(f"crack_with_hashcat: potfile={potfile}")
+    log_debug(f"crack_with_hashcat: potfile={potfile} hc_dir={hc_dir}")
 
-    _log_hashcat_output("DIAG", [f"Hashcat EXE: {hc_exe}", f"hc22000: {hc22000_path}", f"wordlist: {wordlist_path}"])
+    _log_hashcat_output("DIAG", [f"Hashcat EXE: {hc_exe}", f"hc22000: {hc22000_path}", f"wordlist: {wordlist_path}", f"CWD: {hc_dir}"])
 
     try:
         with open(hc22000_path, 'r') as _f:
@@ -378,8 +379,8 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         return None
 
     try:
-        log_debug(f"crack_with_hashcat: testing hashcat binary with --version")
-        ver = subprocess.run([hc_exe, "--version"], capture_output=True, text=True, timeout=30)
+        log_debug(f"crack_with_hashcat: testing hashcat binary with --version (cwd={hc_dir})")
+        ver = subprocess.run([hc_exe, "--version"], capture_output=True, text=True, timeout=30, cwd=hc_dir)
         _log_hashcat_output("hashcat --version", [ver.stdout.strip(), ver.stderr.strip(), f"rc={ver.returncode}"])
         log_debug(f"crack_with_hashcat: hashcat --version stdout={ver.stdout.strip()!r} stderr={ver.stderr.strip()!r} rc={ver.returncode}")
         if ver.returncode != 0:
@@ -389,14 +390,15 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         log_error("hashcat binary test threw exception", e)
         return None
 
-    log_debug(f"crack_with_hashcat: probing backend devices with -I")
+    log_debug(f"crack_with_hashcat: probing backend devices with -I (cwd={hc_dir})")
     try:
         diag = subprocess.run(
-            [hc_exe, "-I", "--backend-devices"],
+            [hc_exe, "-I"],
             capture_output=True, text=True, timeout=60,
             creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0,
+            cwd=hc_dir,
         )
-        device_out = f"stdout={diag.stdout[:1000]!r} stderr={diag.stderr[:1000]!r} rc={diag.returncode}"
+        device_out = f"stdout={diag.stdout[:2000]!r} stderr={diag.stderr[:2000]!r} rc={diag.returncode}"
         _log_hashcat_output("hashcat -I (backend devices)", [device_out])
         log_debug("crack_with_hashcat: hashcat -I result", device_out)
     except Exception as e:
@@ -422,6 +424,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding='utf-8', errors='replace',
             creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0,
+            cwd=hc_dir,
         )
         log_debug(f"crack_with_hashcat: subprocess started pid={proc.pid}")
 
@@ -507,7 +510,8 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
                 try:
                     diag_cmd = [hc_exe, "-m", "22000", "-a", "0", "--potfile-path", potfile, "--force", hc22000_path, wordlist_path]
                     diag = subprocess.run(diag_cmd, capture_output=True, text=True, timeout=120,
-                        creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0)
+                        creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0,
+                        cwd=hc_dir)
                     diag_out = f"stdout={diag.stdout[:2000]!r} stderr={diag.stderr[:2000]!r} rc={diag.returncode}"
                     _log_hashcat_output("DIAGNOSTIC (no --quiet)", [diag_out])
                     log_debug("crack_with_hashcat: diagnostic run", diag_out)
