@@ -7,12 +7,12 @@ import platform
 import subprocess
 
 from scapy.all import rdpcap
-from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt
+from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt
 from scapy.layers.eap import EAPOL, EAPOL_KEY
 
 from src.console import console, colored_log, log_error
 from src.config import BIN_DIR, HASHCAT_VERSION, HASHCAT_URL, HCOV_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME
-from src.utils import download_with_progress, sanitize_ssid
+from src.utils import download_with_progress
 
 
 _SYSTEM = platform.system()

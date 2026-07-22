@@ -9,3 +9,4 @@ error_log_*.txt
 *.commit_hash
 hashcat-*.zip
 hashcat-*.7z
+/kernels/
