@@ -73,4 +73,3 @@ def log_error(message: str, error: Exception = None):
         f.write(log_message + "\n")
     if error:
         colored_log("error", f"An error occurred. Details logged to {error_log}")
-        console.print_exception(show_locals=False)
