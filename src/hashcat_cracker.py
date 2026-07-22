@@ -406,7 +406,6 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
     cmd = [
         hc_exe, "-m", "22000", "-a", "0",
-        "--status", "--status-timer=1",
         "--potfile-path", potfile,
         "--quiet",
         "--force",
@@ -418,6 +417,30 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     log_debug(f"crack_with_hashcat: running command: {cmd_str}")
 
     proc = None
+    import threading
+    _spinner_stop = threading.Event()
+
+    def _spinner_thread():
+        chars = ['-', '\\', '|', '/']
+        msg_queue = [
+            f"Hashcat cracking {display_essid}... Initializing kernels (may take 30-60s)...",
+            f"Hashcat cracking {display_essid}... Running on GPU...",
+            f"Hashcat cracking {display_essid}... Testing candidates...",
+            f"Hashcat cracking {display_essid}... Almost there...",
+        ]
+        idx = 0
+        last_switch = time.time()
+        c = 0
+        while not _spinner_stop.is_set():
+            now = time.time()
+            if now - last_switch >= 8:
+                idx = (idx + 1) % len(msg_queue)
+                last_switch = now
+            sys.stdout.write(f"\r  {chars[c % 4]} {msg_queue[idx]:<70}\r")
+            sys.stdout.flush()
+            c += 1
+            time.sleep(0.25)
+
     try:
         proc = subprocess.Popen(
             cmd,
@@ -440,16 +463,8 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             except Exception as e:
                 log_debug("crack_with_hashcat: failed to set priority", str(e))
 
-        msg_queue = [
-            f"Hashcat cracking {display_essid}... Initializing...",
-            f"Hashcat cracking {display_essid}... Loading kernel...",
-            f"Hashcat cracking {display_essid}... Running on GPU...",
-            f"Hashcat cracking {display_essid}... Testing candidates...",
-            f"Hashcat cracking {display_essid}... Almost there...",
-        ]
-        msg_idx = 0
-        spin_idx = 0
-        last_switch = time.time()
+        t = threading.Thread(target=_spinner_thread, daemon=True)
+        t.start()
 
         password = None
         hashcat_output: list[str] = []
@@ -462,34 +477,6 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
             if not line:
                 continue
-
-            status_keywords = {"Cracked", "Cracking", "Progress", "Status",
-                               "Speed", "GPU", "Started", "Session", "Memory",
-                               "ctr", "Time.Est", "Time.Start"}
-            if any(kw in line for kw in status_keywords):
-                info = _parse_progress(line)
-                parts = []
-                if 'speed' in info:
-                    parts.append(info['speed'])
-                if 'progress' in info:
-                    parts.append(info['progress'])
-                if 'time' in info:
-                    parts.append(info['time'])
-                display = " | ".join(parts) if parts else "running..."
-
-                spin_idx += 1
-                now = time.time()
-                if now - last_switch >= 6:
-                    msg_idx = (msg_idx + 1) % len(msg_queue)
-                    last_switch = now
-
-                _write_status(_SPINNER_CHARS[spin_idx % 4],
-                              f"Hashcat {display_essid}: {display}")
-                continue
-
-            if "Exhausted" in line or "Quit" in line or "Killed" in line:
-                log_debug(f"crack_with_hashcat: hashcat terminated with status: {line}")
-                break
 
             if ":" in line:
                 idx = line.rfind(":")
@@ -518,7 +505,10 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
                 except Exception as e2:
                     log_debug("crack_with_hashcat: diagnostic also failed", str(e2))
 
-        _clear_status()
+        _spinner_stop.set()
+        t.join(timeout=2)
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.flush()
 
         if password:
             elapsed = time.time() - start_time
@@ -556,22 +546,26 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         log_error("hashcat binary not found at path", e)
         return None
     except KeyboardInterrupt:
+        _spinner_stop.set()
         if proc:
             try:
                 proc.terminate()
             except Exception:
                 pass
-        _clear_status()
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.flush()
         colored_log("warning", "Hashcat cracking interrupted by user.")
         return None
     except Exception as e:
+        _spinner_stop.set()
         if proc:
             try:
                 proc.terminate()
             except Exception:
                 pass
         log_error("Hashcat execution failed", e)
-        _clear_status()
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.flush()
         return None
 
 
