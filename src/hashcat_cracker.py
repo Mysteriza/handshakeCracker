@@ -42,19 +42,30 @@ def get_hashcat_path() -> str | None:
     return None
 
 
-def _ensure_py7zr():
-    try:
-        import py7zr
-        return True
-    except ImportError:
+def _extract_archive(archive: str, dest: str) -> bool:
+    if archive.endswith('.zip'):
         try:
-            subprocess.check_call(
-                [sys.executable, "-m", "pip", "install", "py7zr", "-q"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            import py7zr
+            import zipfile
+            with zipfile.ZipFile(archive, 'r') as z:
+                z.extractall(path=dest)
             return True
         except Exception:
-            return False
+            pass
+
+    try:
+        sz = os.path.join(dest, "7zr.exe")
+        if not os.path.isfile(sz):
+            colored_log("info", "Downloading 7-Zip standalone extractor...")
+            from src.utils import download_with_progress
+            download_with_progress(
+                "https://www.7-zip.org/a/7zr.exe", sz,
+                "Downloading 7zr")
+        r = subprocess.run(
+            [sz, "x", archive, f"-o{dest}", "-y"],
+            capture_output=True, text=True, timeout=120)
+        return r.returncode == 0
+    except Exception:
+        return False
 
 
 def ensure_hashcat() -> bool:
@@ -70,20 +81,11 @@ def ensure_hashcat() -> bool:
         local_archive = os.path.join(root, DEPS_DIR, HASHCAT_ARCHIVE_NAME)
         if os.path.isfile(local_archive):
             colored_log("info", f"Found local hashcat archive, extracting...")
-            if not _ensure_py7zr():
-                return False
-            import py7zr
-            with py7zr.SevenZipFile(local_archive, mode='r') as z:
-                z.extractall(path=dest_dir)
-            if get_hashcat_path():
-                colored_log("success", f"hashcat {HASHCAT_VERSION} ready.")
-                return True
+            if _extract_archive(local_archive, dest_dir):
+                if get_hashcat_path():
+                    colored_log("success", f"hashcat {HASHCAT_VERSION} ready.")
+                    return True
             colored_log("warning", "Local hashcat extraction failed — trying download.")
-
-        if not _ensure_py7zr():
-            colored_log("error", "Failed to install py7zr (needed to extract hashcat).")
-            return False
-        import py7zr
 
         tmp = tempfile.NamedTemporaryFile(suffix='.7z', delete=False)
         tmp_path = tmp.name
@@ -93,14 +95,12 @@ def ensure_hashcat() -> bool:
             return False
 
         colored_log("info", "Extracting hashcat...")
-        with py7zr.SevenZipFile(tmp_path, mode='r') as z:
-            z.extractall(path=dest_dir)
+        if _extract_archive(tmp_path, dest_dir):
+            if get_hashcat_path():
+                colored_log("success", f"hashcat {HASHCAT_VERSION} ready.")
+                return True
 
-        if get_hashcat_path():
-            colored_log("success", f"hashcat {HASHCAT_VERSION} ready.")
-            return True
-
-        colored_log("error", "hashcat extraction completed but binary not found.")
+        colored_log("error", "hashcat extraction failed.")
         return False
 
     except KeyboardInterrupt:
@@ -380,6 +380,8 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
         if proc:
             proc.wait()
+            if proc.returncode != 0:
+                password = None
 
         _clear_status()
 
@@ -392,7 +394,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             console.print(f"  Time: {time_str}")
             return password
 
-        if not password and os.path.exists(potfile):
+        if os.path.exists(potfile):
             with open(potfile) as f:
                 for line in f:
                     if ':' in line:
