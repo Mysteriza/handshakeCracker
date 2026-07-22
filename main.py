@@ -43,7 +43,7 @@ from src.cracker import get_already_cracked_essids, crack_handshake
 from src.setup import auto_setup
 from src.gpu import has_discrete_gpu, get_gpu_name
 from src.hashcat_cracker import hashcat_crack_handshake, ensure_hashcat
-from src.updater import check_for_updates, show_version_info
+
 
 
 class PcapValidator(Validator):
@@ -111,9 +111,6 @@ def get_manual_handshake_paths(session: PromptSession) -> list[str]:
 SEPARATOR = "-" * 60
 
 def main():
-    if check_for_updates():
-        sys.exit(0)
-
     os.system("cls" if os.name == "nt" else "clear")
 
     try:
@@ -129,8 +126,6 @@ def main():
                 for _ in f:
                     n += 1
             colored_log("info", f"{n:,} passwords loaded.".replace(",", "."))
-        show_version_info()
-
         use_hashcat = has_discrete_gpu()
         if use_hashcat:
             gpu_name = get_gpu_name()
