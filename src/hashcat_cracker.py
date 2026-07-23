@@ -13,6 +13,7 @@ from scapy.layers.eap import EAPOL, EAPOL_KEY
 from src.console import console, colored_log, log_error, log_debug
 from src.config import BIN_DIR, HASHCAT_VERSION, HASHCAT_URL, HCOV_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME
 from src.utils import download_with_progress
+from src.validator import _classify_eapol
 
 
 _SYSTEM = platform.system()
@@ -139,6 +140,67 @@ def ensure_hashcat() -> bool:
                 pass
 
 
+def warmup_hashcat_kernel() -> bool:
+    hc_exe = get_hashcat_path()
+    if not hc_exe:
+        return False
+
+    hc_dir = os.path.dirname(hc_exe)
+    dummy_hc22000 = os.path.join(HCOV_DIR, "_warmup.hc22000")
+    dummy_wordlist = os.path.join(HCOV_DIR, "_warmup_wl.txt")
+
+    os.makedirs(HCOV_DIR, exist_ok=True)
+    with open(dummy_hc22000, "w") as f:
+        f.write("WPA*02*b8035c6e92ac3356137ea51548f9f7d0*68f543f3a778*803049625845*4b6f73616e206275206e617461*477909d5740b55afe8867db5fe6ddbaa19e22d26af3dad161c06b6094bb76e36*0103007502010a00000000000000000001542d23323f1e5b333deb4c57c669c62f743ae44ab763ad8e2e73f2016b74503c00000000000000000000000000000000000000000000\n")
+    with open(dummy_wordlist, "w") as f:
+        f.write("testpassword\n")
+
+    potfile = os.path.join(HCOV_DIR, "_warmup.potfile")
+    cmd = [
+        hc_exe, "-m", "22000", "-a", "0",
+        "-w", "3",
+        "--potfile-path", potfile,
+        dummy_hc22000, dummy_wordlist
+    ]
+
+    try:
+        log_debug("warmup_hashcat_kernel: starting detailed warmup")
+        colored_log("info", "Inisialisasi GPU & Kompilasi Kernel Hashcat...")
+        start = time.time()
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding='utf-8', errors='replace',
+            creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0,
+            cwd=hc_dir,
+        )
+
+        for line in proc.stdout:
+            line_str = line.strip()
+            if line_str and not line_str.startswith("WPA*02*"):
+                console.print(f"  [cyan]│[/cyan] {line_str}")
+
+        proc.wait(timeout=180)
+        elapsed = time.time() - start
+        log_debug(f"warmup_hashcat_kernel: finished in {elapsed:.2f}s")
+        if elapsed > 5:
+            colored_log("success", f"Inisialisasi & Kompilasi Kernel GPU selesai ({int(elapsed)}s).")
+        else:
+            colored_log("success", "Kernel GPU Hashcat sudah siap (cached).")
+        return True
+    except Exception as e:
+        log_debug(f"warmup_hashcat_kernel: failed ({e})")
+        return False
+    finally:
+        for f in [dummy_hc22000, dummy_wordlist, potfile]:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+
+
 def add_bin_to_path():
     hc = get_hashcat_path()
     if hc:
@@ -151,22 +213,6 @@ def add_bin_to_path():
             log_debug(f"add_bin_to_path: {parent} already in PATH")
     else:
         log_debug("add_bin_to_path: hashcat not found, nothing to add")
-
-
-def _classify_eapol(ek) -> str | None:
-    ack = bool(ek.key_ack)
-    mic = bool(ek.has_key_mic)
-    ins = bool(ek.install)
-    sec = bool(ek.secure)
-    if ack and not mic and not ins and not sec:
-        return "M1"
-    if not ack and mic and not ins and not sec:
-        return "M2"
-    if ack and mic and ins and sec:
-        return "M3"
-    if not ack and mic and not ins and sec:
-        return "M4"
-    return None
 
 
 def _format_mac(mac) -> str:
@@ -405,7 +451,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             if now - last_switch >= 8:
                 idx = (idx + 1) % len(msg_queue)
                 last_switch = now
-            sys.stdout.write(f"\r\033[2K  {chars[c % 4]} {msg_queue[idx]}\r")
+            sys.stdout.write(f"\r  {chars[c % 4]} {msg_queue[idx]}".ljust(110) + "\r")
             sys.stdout.flush()
             c += 1
             time.sleep(0.25)
@@ -476,7 +522,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
         _spinner_stop.set()
         t.join(timeout=2)
-        sys.stdout.write("\r\033[2K\r")
+        sys.stdout.write("\r" + " " * 110 + "\r")
         sys.stdout.flush()
 
         if password:
@@ -486,6 +532,17 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             log_debug(f"crack_with_hashcat: FOUND password={password!r} time={time_str}")
             console.print(f"  Password: {password}")
             console.print(f"  Time: {time_str}")
+
+            os.makedirs(RESULTS_DIR, exist_ok=True)
+            safe_essid = sanitize_ssid(display_essid)
+            result_file = os.path.join(RESULTS_DIR, f"{safe_essid}_cracked_password.txt")
+            with open(result_file, "w") as f:
+                f.write(f"Network (ESSID): {display_essid}\n")
+                f.write(f"Wordlist Used: {os.path.basename(wordlist_path)}\n")
+                f.write(f"Password Found: {password}\n")
+                f.write(f"Time Taken: {time_str}\n")
+
+            console.print(f"  Saved to: {result_file}")
             return password
 
         if os.path.exists(potfile):

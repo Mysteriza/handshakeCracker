@@ -3,6 +3,7 @@ import re
 import sys
 import time
 import math
+import tempfile
 import threading
 import subprocess
 
@@ -42,12 +43,12 @@ def _terminate_all():
 
 
 def _write_status(spin_char: str, msg: str):
-    sys.stdout.write(f"\r\033[2K  {spin_char} {msg}\r")
+    sys.stdout.write(f"\r  {spin_char} {msg}".ljust(110) + "\r")
     sys.stdout.flush()
 
 
 def _clear_status():
-    sys.stdout.write("\r\033[2K\r")
+    sys.stdout.write("\r" + " " * 110 + "\r")
     sys.stdout.flush()
 
 
@@ -118,12 +119,13 @@ def crack_handshake(
             chunk_size = math.ceil(total / n)
 
             threads = []
+            chunk_dir = tempfile.gettempdir()
             for i in range(n):
                 start = i * chunk_size
                 end = min(start + chunk_size, total)
                 if start >= total:
                     break
-                chunk_path = f"{wordlist_path}.chunk.{i}"
+                chunk_path = os.path.join(chunk_dir, f"hs_chunk_{i}.txt")
                 with open(chunk_path, 'w', encoding='utf-8') as cf:
                     cf.writelines(lines[start:end])
                 chunk_paths.append(chunk_path)
@@ -194,6 +196,7 @@ def crack_handshake(
                 + "_determined_final"
             )
 
+        _clear_status()
         console.print(f"  Password: {password}")
         console.print(f"  Time: {time_str}")
 
