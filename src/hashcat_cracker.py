@@ -358,10 +358,10 @@ def _log_hashcat_output(heading: str, lines: list[str]):
         pass
 
 
-def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str, device_id: int = 1) -> str | None:
+def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str) -> str | None:
     start_time = time.time()
     hc_exe = get_hashcat_path()
-    log_debug(f"crack_with_hashcat: start hc_exe={hc_exe!r} hc22000={hc22000_path} wordlist={wordlist_path} device_id={device_id}")
+    log_debug(f"crack_with_hashcat: start hc_exe={hc_exe!r} hc22000={hc22000_path} wordlist={wordlist_path}")
     if not hc_exe:
         log_error("crack_with_hashcat: hashcat binary not found")
         return None
@@ -402,12 +402,8 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
     cmd = [
         hc_exe, "-m", "22000", "-a", "0",
-        "-d", str(device_id),
         "-w", "3",
-        "--backend-ignore-cuda",
         "--potfile-path", potfile,
-        "--quiet",
-        "--force",
         hc22000_path, wordlist_path,
     ]
 
@@ -422,10 +418,10 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     def _spinner_thread():
         chars = ['-', '\\', '|', '/']
         msg_queue = [
-            f"Hashcat (device {device_id}) cracking {display_essid}... Initializing kernels (may take 30-60s)...",
-            f"Hashcat (device {device_id}) cracking {display_essid}... Running...",
-            f"Hashcat (device {device_id}) cracking {display_essid}... Testing candidates...",
-            f"Hashcat (device {device_id}) cracking {display_essid}... Almost there...",
+            f"Hashcat cracking {display_essid}... Initializing kernels (may take 30-60s)...",
+            f"Hashcat cracking {display_essid}... Running...",
+            f"Hashcat cracking {display_essid}... Testing candidates...",
+            f"Hashcat cracking {display_essid}... Almost there...",
         ]
         idx = 0
         last_switch = time.time()
@@ -477,7 +473,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             if not line:
                 continue
 
-            if ":" in line:
+            if line.startswith("WPA*02*") and ":" in line:
                 idx = line.rfind(":")
                 pw_candidate = line[idx + 1:].strip()
                 if pw_candidate and len(pw_candidate) < 128:
@@ -492,14 +488,14 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             if proc.returncode != 0:
                 log_debug(f"crack_with_hashcat: non-zero return code, discarding password candidate")
                 password = None
-                log_debug("crack_with_hashcat: hashcat failed, running diagnostic without --quiet")
+                log_debug("crack_with_hashcat: hashcat failed, running diagnostic")
                 try:
-                    diag_cmd = [hc_exe, "-m", "22000", "-a", "0", "--potfile-path", potfile, "--force", hc22000_path, wordlist_path]
+                    diag_cmd = [hc_exe, "-m", "22000", "-a", "0", "--potfile-path", potfile, hc22000_path, wordlist_path]
                     diag = subprocess.run(diag_cmd, capture_output=True, text=True, timeout=120,
                         creationflags=subprocess.CREATE_NO_WINDOW if _SYSTEM == "Windows" else 0,
                         cwd=hc_dir)
                     diag_out = f"stdout={diag.stdout[:2000]!r} stderr={diag.stderr[:2000]!r} rc={diag.returncode}"
-                    _log_hashcat_output("DIAGNOSTIC (no --quiet)", [diag_out])
+                    _log_hashcat_output("DIAGNOSTIC", [diag_out])
                     log_debug("crack_with_hashcat: diagnostic run", diag_out)
                 except Exception as e2:
                     log_debug("crack_with_hashcat: diagnostic also failed", str(e2))
@@ -569,9 +565,9 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
 
 def hashcat_crack_handshake(
-    handshake_path: str, wordlist_path: str, display_essid: str, device_id: int = 1
+    handshake_path: str, wordlist_path: str, display_essid: str
 ) -> str | None:
-    log_debug(f"hashcat_crack_handshake: start handshake={handshake_path} wordlist={wordlist_path} essid={display_essid!r} device_id={device_id}")
+    log_debug(f"hashcat_crack_handshake: start handshake={handshake_path} wordlist={wordlist_path} essid={display_essid!r}")
 
     if not ensure_hashcat():
         log_debug("hashcat_crack_handshake: ensure_hashcat returned False, aborting")
@@ -592,8 +588,8 @@ def hashcat_crack_handshake(
         log_debug("hashcat_crack_handshake: convert_cap_to_hc22000 returned False")
         return None
 
-    log_debug(f"hashcat_crack_handshake: conversion OK, calling crack_with_hashcat with device_id={device_id}")
-    result = crack_with_hashcat(hc22000_path, wordlist_path, display_essid, device_id=device_id)
+    log_debug(f"hashcat_crack_handshake: conversion OK, calling crack_with_hashcat")
+    result = crack_with_hashcat(hc22000_path, wordlist_path, display_essid)
     log_debug(f"hashcat_crack_handshake: crack_with_hashcat returned {result!r}")
 
     # Cleanup
