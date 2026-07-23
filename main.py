@@ -45,7 +45,6 @@ from src.gpu import has_discrete_gpu, get_gpu_name
 from src.hashcat_cracker import hashcat_crack_handshake, ensure_hashcat
 
 
-
 class PcapValidator(Validator):
     def validate(self, document):
         text = document.text
@@ -217,18 +216,12 @@ def main():
             console.print(f"Handshake {idx}/{len(deduped)}: {base_essid}")
 
             if use_hashcat:
-                log_debug(f"main: routing to hashcat (device 1) for {base_essid}")
+                log_debug(f"main: routing to hashcat for {base_essid}")
                 cracked = hashcat_crack_handshake(
-                    handshake_path, wordlist_path, base_essid, device_id=1
+                    handshake_path, wordlist_path, base_essid
                 )
-                log_debug(f"main: hashcat (device 1) returned {cracked!r}")
-                if cracked is None:
-                    colored_log("warning", "Hashcat device 1 failed — retrying with device 2.")
-                    log_debug(f"main: retrying hashcat with device 2 for {base_essid}")
-                    cracked = hashcat_crack_handshake(
-                        handshake_path, wordlist_path, base_essid, device_id=2
-                    )
-                    log_debug(f"main: hashcat (device 2) returned {cracked!r}")
+                log_debug(f"main: hashcat returned {cracked!r}")
+
                 if cracked is None:
                     colored_log("warning", "Hashcat failed — falling back to aircrack-ng.")
                     log_debug(f"main: falling back to aircrack-ng for {base_essid}")
