@@ -1,8 +1,9 @@
 /venv
 /cracked_results
-/__pycache__/
+__pycache__/
 *.pyc
 *.pyo
+*.hc22000
 /bin/
 error_log_*.txt
 /hc22000_cache/
