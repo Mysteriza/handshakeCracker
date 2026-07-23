@@ -170,12 +170,4 @@ def auto_setup() -> bool:
     if not ensure_wordlist():
         return False
 
-    try:
-        from src.gpu import has_discrete_gpu
-        from src.hashcat_cracker import ensure_hashcat, warmup_hashcat_kernel
-        if has_discrete_gpu() and ensure_hashcat():
-            warmup_hashcat_kernel()
-    except Exception as e:
-        log_error("Failed to warmup hashcat kernel during setup", e)
-
     return True
