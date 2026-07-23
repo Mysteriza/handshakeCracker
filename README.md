@@ -1,15 +1,19 @@
 # Wi-Fi Handshake Cracker
+# hashcat isn't working yet; it's been temporarily disabled, sorry
+
+> **⚠️ hashcat (GPU acceleration) is temporarily disabled**
+> The OpenCL runtime hangs on Windows with NVIDIA GPUs and we haven't found a reliable fix yet.
+> The program uses **aircrack-ng (CPU)** for all cracking — no GPU for now.
+> PRs or ideas to fix hashcat are welcome.
 
 Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Windows + Linux), fully automatic setup.
-
-> **Note:** hashcat GPU acceleration is currently broken on Windows with NVIDIA GPUs (OpenCL runtime hangs). hashcat is tried first if a discrete GPU is detected, then falls back to aircrack-ng (CPU). PRs welcome if you know how to fix it.
 
 ## Screenshots
 <img width="1005" height="896" alt="22-07-2026_15-08" src="https://github.com/user-attachments/assets/43b236e3-3ba4-4525-afbe-1a5e0b28940d" />
 
 ## Features
 
-- **GPU acceleration** — Auto-detects discrete GPU (NVIDIA/AMD) and tries hashcat first; falls back to CPU aircrack-ng automatically (hashcat broken on NVIDIA Windows — known OpenCL issue)
+- **GPU acceleration (disabled)** — Detects discrete GPU but hashcat is currently broken on NVIDIA Windows (OpenCL hang). All cracking uses aircrack-ng (CPU) for now.
 - **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches wordlist on first run
 - **Cross-platform** — Windows auto-downloads binaries; Linux auto-installs via apt-get
 - **EAPOL validation** — Scapy-based M1/M2/M3/M4 table rejects invalid captures before cracking

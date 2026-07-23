@@ -34,8 +34,8 @@ from src.utils import (
 from src.validator import validate_all_handshakes
 from src.cracker import get_already_cracked_essids, crack_handshake
 from src.setup import auto_setup
-from src.gpu import has_discrete_gpu, get_gpu_name
-from src.hashcat_cracker import hashcat_crack_handshake, ensure_hashcat
+
+
 
 
 class PcapValidator(Validator):
@@ -118,25 +118,8 @@ def main():
                 wordlist_lines = sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
             colored_log("info", f"{wordlist_lines:,} passwords loaded.".replace(",", "."))
 
-        use_hashcat = has_discrete_gpu()
-        # Blok pembatasan 1 juta baris dihapus agar GPU diskrit selalu digunakan
-
-        log_debug(f"main: has_discrete_gpu()={use_hashcat} wordlist_lines={wordlist_lines}")
-
-        if use_hashcat:
-            gpu_name = get_gpu_name()
-            colored_log("info", f"Discrete GPU detected: {gpu_name or 'Unknown'}")
-            colored_log("info", "Will use hashcat (GPU accelerated cracking).")
-            log_debug(f"main: checking ensure_hashcat()")
-            if not ensure_hashcat():
-                colored_log("warning", "hashcat setup failed — falling back to CPU (aircrack-ng).")
-                log_debug("main: ensure_hashcat() returned False, falling back to aircrack-ng")
-                use_hashcat = False
-            else:
-                log_debug("main: ensure_hashcat() returned True, using hashcat")
-        else:
-            colored_log("info", "No discrete GPU detected — using CPU (aircrack-ng).")
-            log_debug("main: has_discrete_gpu() returned False, using aircrack-ng")
+        use_hashcat = False
+        log_debug(f"main: hashcat disabled, using aircrack-ng, wordlist_lines={wordlist_lines}")
 
         session = PromptSession(history=InMemoryHistory())
 

@@ -70,7 +70,7 @@ def _row(cells: list[str], widths: list[int]) -> str:
 
 
 def validate_all_handshakes(file_list: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
-    console.print("\nValidating handshake files...")
+    console.print("\nValidating handshake files... (M1 + M2 is sufficient for validity)")
 
     results = []
     for f in file_list:
