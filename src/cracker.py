@@ -3,7 +3,6 @@ import re
 import sys
 import time
 import math
-import signal
 import threading
 import subprocess
 
