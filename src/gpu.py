@@ -1,7 +1,7 @@
 import platform
 import subprocess
 
-from src.console import log_error
+from src.console import log_error, log_debug
 
 
 _KNOWN_DISCRETE = ["rtx", "gtx", "quadro", "tesla", "rx", "firepro", "pro wx"]
@@ -29,7 +29,7 @@ def _get_gpu_list_powershell() -> list[dict]:
         r = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=5)
         method = "PowerShell (Get-WmiObject)"
 
-    log_error(f"GPU detection: queried via {method}")
+    log_debug(f"GPU detection: queried via {method}")
 
     gpus = []
     lines = r.stdout.strip().splitlines()
@@ -43,7 +43,7 @@ def _get_gpu_list_powershell() -> list[dict]:
             except ValueError:
                 ram_bytes = 0
             gpus.append({"name": name, "ram_bytes": ram_bytes})
-            log_error(f"GPU detection: found \"{name}\" (VRAM: {ram_bytes / (1024**3):.2f} GB)")
+            log_debug(f"GPU detection: found \"{name}\" (VRAM: {ram_bytes / (1024**3):.2f} GB)")
     return gpus
 
 
@@ -58,7 +58,7 @@ def _get_gpu_list_wmic() -> list[dict]:
             name = parts[-1].strip()
             if name and name.lower() != "name":
                 gpus.append({"name": name, "ram_bytes": 0})
-                log_error(f"GPU detection (wmic): found \"{name}\" (VRAM: N/A)")
+                log_debug(f"GPU detection (wmic): found \"{name}\" (VRAM: N/A)")
     return gpus
 
 
@@ -67,28 +67,28 @@ def _is_discrete(gpu: dict) -> bool:
     reason = ""
 
     if any(x in name for x in _SKIP):
-        reason = f"skipped (matched skip list)"
-        log_error(f"GPU detection: \"{gpu['name']}\" -> {reason}")
+        reason = "skipped (matched skip list)"
+        log_debug(f"GPU detection: \"{gpu['name']}\" -> {reason}")
         return False
 
     if any(x in name for x in _KNOWN_DISCRETE):
         matched = [x for x in _KNOWN_DISCRETE if x in name][0]
         reason = f"discrete (matched \"{matched}\")"
-        log_error(f"GPU detection: \"{gpu['name']}\" -> {reason}")
+        log_debug(f"GPU detection: \"{gpu['name']}\" -> {reason}")
         return True
 
     if "nvidia" in name or "geforce" in name:
-        reason = f"discrete (NVIDIA brand)"
-        log_error(f"GPU detection: \"{gpu['name']}\" -> {reason}")
+        reason = "discrete (NVIDIA brand)"
+        log_debug(f"GPU detection: \"{gpu['name']}\" -> {reason}")
         return True
 
-    log_error(f"GPU detection: \"{gpu['name']}\" -> integrated (no matching pattern)")
+    log_debug(f"GPU detection: \"{gpu['name']}\" -> integrated (no matching pattern)")
     return False
 
 
 def has_discrete_gpu() -> bool:
     system = platform.system()
-    log_error(f"GPU detection: OS={system}")
+    log_debug(f"GPU detection: OS={system}")
     try:
         if system == "Windows":
             gpus = _get_gpu_list_powershell()
@@ -96,28 +96,28 @@ def has_discrete_gpu() -> bool:
             if not gpus:
                 gpus = _get_gpu_list_wmic()
                 method = "WMIC"
-            log_error(f"GPU detection: {method} returned {len(gpus)} GPU(s)")
+            log_debug(f"GPU detection: {method} returned {len(gpus)} GPU(s)")
             for gpu in gpus:
                 if _is_discrete(gpu):
-                    log_error(f"GPU detection: RESULT = discrete GPU found")
+                    log_debug("GPU detection: RESULT = discrete GPU found")
                     return True
-            log_error(f"GPU detection: RESULT = no discrete GPU found")
+            log_debug("GPU detection: RESULT = no discrete GPU found")
         elif system == "Linux":
             r = subprocess.run(
                 ["lspci"], capture_output=True, text=True, check=False, timeout=5)
-            log_error(f"GPU detection (lspci):\n{r.stdout.strip()[:500]}")
+            log_debug(f"GPU detection (lspci):\n{r.stdout.strip()[:500]}")
             for line in r.stdout.splitlines():
                 low = line.lower()
                 if any(kw in low for kw in ["vga", "3d", "display"]):
                     if any(x in low for x in _KNOWN_DISCRETE):
-                        log_error(f"GPU detection: RESULT = discrete GPU found via lspci")
+                        log_debug("GPU detection: RESULT = discrete GPU found via lspci")
                         return True
                     if "nvidia" in low or "geforce" in low:
-                        log_error(f"GPU detection: RESULT = discrete GPU found via lspci")
+                        log_debug("GPU detection: RESULT = discrete GPU found via lspci")
                         return True
-            log_error(f"GPU detection: RESULT = no discrete GPU found via lspci")
+            log_debug("GPU detection: RESULT = no discrete GPU found via lspci")
     except Exception as e:
-        log_error(f"GPU detection: EXCEPTION = {e}")
+        log_error("GPU detection: EXCEPTION", e)
     return False
 
 
@@ -130,12 +130,12 @@ def get_gpu_name() -> str | None:
                 gpus = _get_gpu_list_wmic()
             for gpu in gpus:
                 if _is_discrete(gpu):
-                    log_error(f"GPU detection: selected \"{gpu['name']}\"")
+                    log_debug(f"GPU detection: selected \"{gpu['name']}\"")
                     return gpu["name"]
             for gpu in gpus:
                 low = gpu["name"].lower()
                 if not any(x in low for x in _SKIP):
-                    log_error(f"GPU detection: selected (fallback) \"{gpu['name']}\"")
+                    log_debug(f"GPU detection: selected (fallback) \"{gpu['name']}\"")
                     return gpu["name"]
         elif system == "Linux":
             r = subprocess.run(

@@ -114,9 +114,8 @@ def main():
         )
         wordlist_lines = 0
         if os.path.exists(wordlist_path):
-            with open(wordlist_path, 'r', encoding='utf-8', errors='replace') as f:
-                for _ in f:
-                    wordlist_lines += 1
+            with open(wordlist_path, 'rb') as f:
+                wordlist_lines = sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
             colored_log("info", f"{wordlist_lines:,} passwords loaded.".replace(",", "."))
 
         use_hashcat = has_discrete_gpu()
