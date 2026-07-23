@@ -5,17 +5,10 @@ import time
 
 try:
     from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
-    from rich.progress import Progress, SpinnerColumn, TextColumn
-    from prompt_toolkit import prompt
     from prompt_toolkit.completion import PathCompleter
     from prompt_toolkit.validation import Validator, ValidationError
     from prompt_toolkit.shortcuts import PromptSession
     from prompt_toolkit.history import InMemoryHistory
-    from scapy.all import rdpcap
-    from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Elt
-    from scapy.layers.eap import EAPOL, EAPOL_KEY
 except ImportError:
     print("Required Python libraries not found. Attempting to install them...")
     import subprocess
@@ -28,7 +21,7 @@ except ImportError:
         sys.exit(0)
     except Exception as e:
         print(f"Failed to install required libraries: {e}")
-        print("Please install them manually: pip install rich prompt_toolkit scapy")
+        print("Please install them manually: pip install rich prompt_toolkit")
         sys.exit(1)
 
 
@@ -125,11 +118,12 @@ def main():
                 for _ in f:
                     wordlist_lines += 1
             colored_log("info", f"{wordlist_lines:,} passwords loaded.".replace(",", "."))
+
         use_hashcat = has_discrete_gpu()
-        if use_hashcat and wordlist_lines < 1_000_000 and wordlist_lines > 0:
-            colored_log("info", f"Wordlist under 1M lines ({wordlist_lines:,}) — using aircrack-ng (faster startup).")
-            use_hashcat = False
+        # Blok pembatasan 1 juta baris dihapus agar GPU diskrit selalu digunakan
+
         log_debug(f"main: has_discrete_gpu()={use_hashcat} wordlist_lines={wordlist_lines}")
+
         if use_hashcat:
             gpu_name = get_gpu_name()
             colored_log("info", f"Discrete GPU detected: {gpu_name or 'Unknown'}")

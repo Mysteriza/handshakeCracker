@@ -317,34 +317,8 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     return True
 
 
-_SPINNER_CHARS = ['-', '\\', '|', '/']
 
 
-def _write_status(spin_char: str, msg: str):
-    sys.stdout.write(f"\r  {spin_char} {msg:<66}\r")
-    sys.stdout.flush()
-
-
-def _clear_status():
-        sys.stdout.write("\r\033[2K\r")
-        sys.stdout.flush()
-
-
-def _parse_progress(line: str) -> dict:
-    data = {}
-    m_speed = re.search(r'(\d+\.\d+\s*[kMG]?H/s)', line)
-    if m_speed:
-        data['speed'] = m_speed.group(1)
-    m_prog = re.search(r'(\d+\.?\d*)\s*/\s*(\d+\.?\d*)', line)
-    if m_prog:
-        data['progress'] = f"{m_prog.group(1)}/{m_prog.group(2)}"
-    m_time = re.search(r'(\d+:\d+:\d+)', line)
-    if m_time:
-        data['time'] = m_time.group(1)
-    m_guess = re.search(r'\((.+?)\)', line)
-    if m_guess:
-        data['guess'] = m_guess.group(1)
-    return data
 
 
 def _log_hashcat_output(heading: str, lines: list[str]):
@@ -502,7 +476,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
         _spinner_stop.set()
         t.join(timeout=2)
-        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.write("\r\033[2K\r")
         sys.stdout.flush()
 
         if password:
@@ -547,7 +521,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
                 proc.terminate()
             except Exception:
                 pass
-        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.write("\r\033[2K\r")
         sys.stdout.flush()
         colored_log("warning", "Hashcat cracking interrupted by user.")
         return None
@@ -559,7 +533,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             except Exception:
                 pass
         log_error("Hashcat execution failed", e)
-        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.write("\r\033[2K\r")
         sys.stdout.flush()
         return None
 

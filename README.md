@@ -2,14 +2,14 @@
 
 Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Windows + Linux), fully automatic setup.
 
-> **Note:** hashcat (GPU acceleration) is currently broken on Windows with NVIDIA GPUs — the OpenCL runtime hangs during kernel initialization. Falls back to aircrack-ng (CPU) automatically. PRs welcome if you know how to fix it.
+> **Note:** hashcat GPU acceleration is currently broken on Windows with NVIDIA GPUs (OpenCL runtime hangs). hashcat is tried first if a discrete GPU is detected, then falls back to aircrack-ng (CPU). PRs welcome if you know how to fix it.
 
 ## Screenshots
 <img width="1005" height="896" alt="22-07-2026_15-08" src="https://github.com/user-attachments/assets/43b236e3-3ba4-4525-afbe-1a5e0b28940d" />
 
 ## Features
 
-- **GPU acceleration** — Auto-detects discrete GPU (NVIDIA/AMD) and cracks via hashcat (100-300k PMK/s); falls back to CPU aircrack-ng if no GPU found
+- **GPU acceleration** — Auto-detects discrete GPU (NVIDIA/AMD) and tries hashcat first; falls back to CPU aircrack-ng automatically (hashcat broken on NVIDIA Windows — known OpenCL issue)
 - **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches wordlist on first run
 - **Cross-platform** — Windows auto-downloads binaries; Linux auto-installs via apt-get
 - **EAPOL validation** — Scapy-based M1/M2/M3/M4 table rejects invalid captures before cracking
@@ -18,7 +18,6 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 - **Dynamic parallelism** — CPU mode uses 50% of cores at BELOW_NORMAL priority
 - **Error logging** — All errors written to timestamped `error_log_*.txt`
 - **Permission resilient** — Falls back to `%TEMP%` automatically if the project directory isn't writable
-- **Auto-update** — Checks GitHub for updates on startup and pulls latest code automatically
 
 ## Performance
 
@@ -48,11 +47,7 @@ The program auto-installs all dependencies on first run. No manual setup require
 python main.py
 ```
 
-3. It auto-detects GPU → uses hashcat (with aircrack-ng fallback), validates handshakes with Scapy, and cracks them
-
-## Usage
-
-
+3. It auto-detects GPU → tries hashcat (falls back to aircrack-ng), validates handshakes with Scapy, and cracks them
 
 ## Project Structure
 
@@ -73,7 +68,6 @@ handshakeCracker/
     ├── gpu.py           # Discrete GPU detection
     ├── cracker.py       # Aircrack-ng cracking (CPU fallback)
     ├── hashcat_cracker.py  # Hashcat cracking + .cap → .hc22000 converter
-    ├── updater.py       # Auto-update via git pull
     └── setup.py         # OS detection, auto-setup
 ```
 
