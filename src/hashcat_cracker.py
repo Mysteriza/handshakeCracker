@@ -196,6 +196,7 @@ def warmup_hashcat_kernel() -> bool:
             cwd=hc_dir,
         )
 
+        assert proc.stdout is not None, "stdout pipe not created"
         for line in proc.stdout:
             line_str = line.strip()
             if line_str and not line_str.startswith("WPA*02*"):
@@ -256,7 +257,10 @@ def _format_mac(mac) -> str:
 
 
 def _extract_raw_eapol(pkt) -> bytes | None:
-    return bytes(pkt[EAPOL])
+    try:
+        return bytes(pkt[EAPOL])
+    except (IndexError, Exception):
+        return None
 
 
 def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
@@ -340,17 +344,26 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     # Get raw EAPOL bytes from M2 (trim to declared body length)
     eapol_raw_bytes = _extract_raw_eapol(m2_pkt)
     declared_len = 4 + m2_pkt[EAPOL].len
-    if len(eapol_raw_bytes) > declared_len:
+    if eapol_raw_bytes is not None and len(eapol_raw_bytes) > declared_len:
         log_debug(f"convert_cap_to_hc22000: trimming EAPOL from {len(eapol_raw_bytes)} to {declared_len} (body len {m2_pkt[EAPOL].len})")
         eapol_raw_bytes = eapol_raw_bytes[:declared_len]
 
     log_debug(f"convert_cap_to_hc22000: extracted ap_mac={ap_mac} sta_mac={sta_mac}")
-    log_debug(f"convert_cap_to_hc22000: anonce_len={len(anonce) if anonce else 0} snonce_len={len(snonce) if snonce else 0} mic_len={len(mic) if mic else 0} key_ver={key_ver}")
-    log_debug(f"convert_cap_to_hc22000: eapol_raw_bytes_len={len(eapol_raw_bytes) if eapol_raw_bytes else 0}")
+    log_debug(f"convert_cap_to_hc22000: anonce_len={len(anonce or '')} snonce_len={len(snonce or '')} mic_len={len(mic or '')} key_ver={key_ver}")
+    log_debug(f"convert_cap_to_hc22000: eapol_raw_bytes_len={len(eapol_raw_bytes or b'')}")
 
     if not all([ap_mac, sta_mac, anonce, snonce, mic, key_ver, eapol_raw_bytes]):
         log_debug(f"convert_cap_to_hc22000: validation failed - missing fields: ap={bool(ap_mac)} sta={bool(sta_mac)} anonce={bool(anonce)} snonce={bool(snonce)} mic={bool(mic)} kv={bool(key_ver)} eapol={bool(eapol_raw_bytes)}")
         return False
+
+    # Narrow types: after the all() guard above, these are guaranteed truthy
+    assert ap_mac is not None
+    assert sta_mac is not None
+    assert anonce is not None
+    assert snonce is not None
+    assert mic is not None
+    assert key_ver is not None
+    assert eapol_raw_bytes is not None
 
     if not essid:
         essid = "Unknown"
@@ -485,6 +498,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             text=True, encoding='utf-8', errors='replace',
             cwd=hc_dir,
         )
+        assert proc.stdout is not None, "stdout pipe not created"
         log_debug(f"crack_with_hashcat: subprocess started pid={proc.pid}")
 
         t = threading.Thread(target=_spinner_thread, daemon=True)
