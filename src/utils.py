@@ -13,6 +13,15 @@ def sanitize_ssid(ssid: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", ssid).replace(" ", "_").strip()
 
 
+def count_wordlist_lines(path: str) -> int:
+    """Count lines in a wordlist file efficiently (1 MB buffer chunks)."""
+    try:
+        with open(path, 'rb') as f:
+            return sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
+    except OSError:
+        return 0
+
+
 def scan_default_directory(directory_path: str) -> list[str]:
     found_files = []
     if not os.path.exists(directory_path):

@@ -3,9 +3,11 @@ import re
 import sys
 import time
 import math
+import atexit
 import tempfile
 import threading
 import subprocess
+import ctypes
 
 from src.console import console, colored_log, log_error
 from src.config import RESULTS_DIR
@@ -41,6 +43,8 @@ def _terminate_all():
             pass
     _active_procs.clear()
 
+atexit.register(_terminate_all)
+
 
 def _write_status(spin_char: str, msg: str):
     sys.stdout.write(f"\r  {spin_char} {msg}".ljust(110) + "\r")
@@ -68,15 +72,20 @@ def _crack_worker(chunk_path: str, handshake_path: str, results: list, idx: int)
             console.print(f"  Failed to launch aircrack-ng: {e}")
         return
     _active_procs.append(proc)
+
+    # Lower priority cross-platform
     try:
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(0x1F0FFF, False, proc.pid)
-        if handle:
-            kernel32.SetPriorityClass(handle, 0x00004000)
-            kernel32.CloseHandle(handle)
+        if os.name == "nt":
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(0x1F0FFF, False, proc.pid)
+            if handle:
+                kernel32.SetPriorityClass(handle, 0x00004000)
+                kernel32.CloseHandle(handle)
+        else:
+            os.setpriority(os.PRIO_PROCESS, proc.pid, 10)
     except Exception:
         pass
+
     try:
         stdout, _ = proc.communicate()
         if "KEY FOUND!" in stdout:
@@ -119,13 +128,13 @@ def crack_handshake(
             chunk_size = math.ceil(total / n)
 
             threads = []
-            chunk_dir = tempfile.gettempdir()
+            chunk_dir = tempfile.mkdtemp(prefix="hs_crack_")
             for i in range(n):
                 start = i * chunk_size
                 end = min(start + chunk_size, total)
                 if start >= total:
                     break
-                chunk_path = os.path.join(chunk_dir, f"hs_chunk_{i}.txt")
+                chunk_path = os.path.join(chunk_dir, f"chunk_{i}.txt")
                 with open(chunk_path, 'w', encoding='utf-8') as cf:
                     cf.writelines(lines[start:end])
                 chunk_paths.append(chunk_path)
@@ -220,9 +229,16 @@ def crack_handshake(
         console.print(f"  Cracking terminated due to an unexpected error.")
         return None
     finally:
+        # Clean up temp chunk files and directory
         for cp in chunk_paths:
             try:
                 os.remove(cp)
+            except OSError:
+                pass
+        if chunk_paths:
+            chunk_dir = os.path.dirname(chunk_paths[0])
+            try:
+                os.rmdir(chunk_dir)
             except OSError:
                 pass
         _terminate_all()
