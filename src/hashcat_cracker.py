@@ -222,7 +222,7 @@ def warmup_hashcat_kernel() -> bool:
     potfile = os.path.join(HCOV_DIR, "_warmup.potfile")
     cmd = [
         hc_exe, "-m", "22000", "-a", "0",
-        "-w", "1",
+        "-w", "1", "-O",
         "--potfile-path", potfile,
         dummy_hc22000, dummy_wordlist,
     ]
@@ -554,7 +554,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
     cmd = [
         hc_exe, "-m", "22000", "-a", "0",
-        "-w", "3",
+        "-w", "4", "-O",
         "--potfile-path", potfile,
         hc22000_path, wordlist_path,
     ]
