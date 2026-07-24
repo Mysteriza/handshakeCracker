@@ -240,7 +240,7 @@ def auto_setup() -> dict:
     dirs_ok = ensure_directories()
     wordlist_ok = ensure_wordlist()
 
-    # Hashcat setup (optional — fallback to aircrack-ng if it fails)
+    # Hashcat setup (preferred over aircrack-ng when available)
     ensure_p7zip()
     try:
         from src.hashcat_cracker import ensure_hashcat
@@ -249,6 +249,15 @@ def auto_setup() -> dict:
         log_debug(f"auto_setup: hashcat setup skipped ({e})")
         hashcat_ok = False
 
+    # GPU detection (informational only — hashcat runs on integrated GPU too)
+    gpu_name: str | None = None
+    if hashcat_ok:
+        try:
+            from src.gpu import get_gpu_name
+            gpu_name = get_gpu_name()
+        except Exception as e:
+            log_debug(f"auto_setup: GPU detection skipped ({e})")
+
     if not aircrack_ok and not hashcat_ok:
         colored_log("error", "No cracking tool available (aircrack-ng or hashcat).")
         return {"aircrack_available": False, "hashcat_available": False}
@@ -256,6 +265,7 @@ def auto_setup() -> dict:
     return {
         "aircrack_available": aircrack_ok,
         "hashcat_available": hashcat_ok,
+        "gpu_name": gpu_name,
         "directories_ready": dirs_ok,
         "wordlist_ready": wordlist_ok,
     }
