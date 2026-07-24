@@ -18,6 +18,9 @@ from src.validator import _classify_eapol
 
 _SYSTEM = platform.system()
 
+# Sentinel: hashcat ran fully (exhausted) but password not found — do NOT fallback to aircrack-ng
+HASHCAT_EXHAUSTED = "__HASHCAT_EXHAUSTED__"
+
 
 def _find_in_path(name: str) -> str | None:
     for d in os.environ.get("PATH", "").split(os.pathsep):
@@ -152,9 +155,9 @@ def _kernel_cache_exists(hc_dir: str) -> bool:
     kernels_dir = os.path.join(hc_dir, "kernels")
     if not os.path.isdir(kernels_dir):
         return False
-    # Any .bin file indicates kernels have been compiled at least once
+    # Hashcat v6.2.6 saves compiled kernels as .kernel files (not .bin)
     for fname in os.listdir(kernels_dir):
-        if fname.endswith(".bin"):
+        if fname.endswith(".kernel") or fname.endswith(".bin"):
             return True
     return False
 
@@ -198,7 +201,12 @@ def _line_is_noise(line: str) -> bool:
     return any(line.startswith(p) for p in noise_prefixes)
 
 
-def warmup_hashcat_kernel() -> bool:
+def warmup_hashcat_kernel(hc22000_path: str | None = None) -> bool:
+    """Pre-compile GPU kernel for mode 22000 using the real handshake hash.
+
+    Requires a valid *hc22000_path* to a converted .hc22000 file — no
+    synthetic/dummy hashes are used (see Testing Policy in AGENTS.md).
+    """
     hc_exe = get_hashcat_path()
     if not hc_exe:
         return False
@@ -210,12 +218,17 @@ def warmup_hashcat_kernel() -> bool:
         colored_log("info", "GPU kernel cache found — compilation not required.")
         return True
 
-    dummy_hc22000 = os.path.join(HCOV_DIR, "_warmup.hc22000")
-    dummy_wordlist = os.path.join(HCOV_DIR, "_warmup_wl.txt")
+    if not hc22000_path or not os.path.isfile(hc22000_path):
+        log_debug("warmup_hashcat_kernel: no real hash file available, skipping warmup")
+        return False
 
     os.makedirs(HCOV_DIR, exist_ok=True)
-    with open(dummy_hc22000, "w") as f:
-        f.write("WPA*02*b8035c6e92ac3356137ea51548f9f7d0*68f543f3a778*803049625845*4b6f73616e206275206e617461*477909d5740b55afe8867db5fe6ddbaa19e22d26af3dad161c06b6094bb76e36*0103007502010a00000000000000000001542d23323f1e5b333deb4c57c669c62f743ae44ab763ad8e2e73f2016b74503c00000000000000000000000000000000000000000000\n")
+
+    warmup_hash = hc22000_path  # real hash — guaranteed valid format
+    dummy_wordlist = os.path.join(HCOV_DIR, "_warmup_wl.txt")
+    cleanup_files: list[str] = [dummy_wordlist]
+    log_debug(f"warmup_hashcat_kernel: using real hash: {hc22000_path}")
+
     with open(dummy_wordlist, "w") as f:
         f.write("testpassword\n")
 
@@ -224,8 +237,9 @@ def warmup_hashcat_kernel() -> bool:
         hc_exe, "-m", "22000", "-a", "0",
         "-w", "1",
         "--potfile-path", potfile,
-        dummy_hc22000, dummy_wordlist,
+        warmup_hash, dummy_wordlist,
     ]
+    cleanup_files.append(potfile)
 
     try:
         log_debug("warmup_hashcat_kernel: no kernel cache found, running first-time compilation")
@@ -297,7 +311,7 @@ def warmup_hashcat_kernel() -> bool:
             else:
                 colored_log("success", "GPU kernel is ready to use.")
         else:
-            colored_log("warning", "GPU kernel compilation failed — falling back to aircrack-ng (CPU).")
+            colored_log("warning", "GPU kernel compilation failed — warmup skipped, using hashcat for actual cracking.")
 
         console.rule(style="yellow")
         return proc.returncode == 0
@@ -306,7 +320,7 @@ def warmup_hashcat_kernel() -> bool:
         log_debug(f"warmup_hashcat_kernel: failed ({e})")
         return False
     finally:
-        for f in [dummy_hc22000, dummy_wordlist, potfile]:
+        for f in cleanup_files:
             if os.path.exists(f):
                 try:
                     os.remove(f)
@@ -481,9 +495,24 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     ap_mac_no_colon = ap_mac.replace(":", "")
     sta_mac_no_colon = sta_mac.replace(":", "")
 
+    # Determine MESSAGEPAIR value based on available EAPOL frames
+    # Bitmask (bits 0-2):
+    #   000 = M1+M2, EAPOL from M2 (challenge)          -> 0x00
+    #   001 = M1+M4, EAPOL from M4 (authorized)         -> 0x01
+    #   010 = M2+M3, EAPOL from M2 (authorized)         -> 0x02
+    #   011 = M2+M3, EAPOL from M3 (authorized)         -> 0x03
+    #   100 = M3+M4, EAPOL from M3 (authorized)         -> 0x04
+    #   101 = M3+M4, EAPOL from M4 (authorized)         -> 0x05
+    has_m3 = "M3" in frames
+    has_m4 = "M4" in frames
+    if has_m3 or has_m4:
+        messagpair = "02"   # M2+M3, EAPOL from M2 (authorized)
+    else:
+        messagpair = "00"   # M1+M2, EAPOL from M2 (challenge)
+
     line = (
         f"WPA*02*{mic}*{ap_mac_no_colon}*{sta_mac_no_colon}*{essid_hex}*"
-        f"{anonce}*{eapol_hex}*00"
+        f"{anonce}*{eapol_hex}*{messagpair}"
     )
 
     log_debug(f"convert_cap_to_hc22000: writing hc22000 file to {output_path}")
@@ -522,6 +551,14 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     os.makedirs(HCOV_DIR, exist_ok=True)
     potfile = os.path.join(HCOV_DIR, "hashcat.potfile")
     log_debug(f"crack_with_hashcat: potfile={potfile} hc_dir={hc_dir}")
+
+    # Start debug log fresh each run
+    debug_log = os.path.join(HCOV_DIR, "hashcat_debug.log")
+    try:
+        if os.path.exists(debug_log):
+            os.remove(debug_log)
+    except OSError:
+        pass
 
     _log_hashcat_output("DIAG", [f"Hashcat EXE: {hc_exe}", f"hc22000: {hc22000_path}", f"wordlist: {wordlist_path}", f"CWD: {hc_dir}"])
 
@@ -562,6 +599,16 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     cmd_str = " ".join(cmd)
     _log_hashcat_output("COMMAND", [cmd_str])
     log_debug(f"crack_with_hashcat: running command: {cmd_str}")
+
+    # Snapshot potfile BEFORE cracking — only NEW entries count
+    potfile_before: set[str] = set()
+    if os.path.exists(potfile):
+        try:
+            with open(potfile, encoding='utf-8', errors='replace') as f:
+                potfile_before = set(f.read().splitlines())
+            log_debug(f"crack_with_hashcat: potfile had {len(potfile_before)} entries before cracking")
+        except Exception:
+            pass
 
     proc = None
     import threading
@@ -638,19 +685,38 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
         # Primary: read password from potfile — most reliable across all Hashcat versions
         password = None
+        # Read potfile AFTER cracking — only NEW entries count
+        password = None
         if os.path.exists(potfile):
             try:
                 with open(potfile, encoding='utf-8', errors='replace') as f:
-                    pot_content = f.read()
-                _log_hashcat_output("POTFILE", [pot_content.strip()[:300]])
-                log_debug(f"crack_with_hashcat: potfile len={len(pot_content)}")
-                for pot_line in pot_content.splitlines():
+                    potfile_after = set(f.read().splitlines())
+                _log_hashcat_output("POTFILE", [f"{len(potfile_after)} entries total"])
+                log_debug(f"crack_with_hashcat: potfile entries: {len(potfile_after)} total, {len(potfile_before)} before")
+
+                new_entries = potfile_after - potfile_before
+                log_debug(f"crack_with_hashcat: new potfile entries: {len(new_entries)}")
+
+                for pot_line in new_entries:
                     if ':' in pot_line and not pot_line.startswith("#"):
                         pw_candidate = pot_line[pot_line.rfind(':') + 1:].strip()
                         if 8 <= len(pw_candidate) <= 63:
                             password = pw_candidate
-                            log_debug(f"crack_with_hashcat: password from potfile: {password!r}")
+                            log_debug(f"crack_with_hashcat: password from new potfile entry: {password!r}")
                             break
+
+                if not password:
+                    # Fallback: scan all entries ONLY if potfile was fresh (no pre-existing entries)
+                    if not potfile_before:
+                        for pot_line in potfile_after:
+                            if ':' in pot_line and not pot_line.startswith("#"):
+                                pw_candidate = pot_line[pot_line.rfind(':') + 1:].strip()
+                                if 8 <= len(pw_candidate) <= 63:
+                                    password = pw_candidate
+                                    log_debug(f"crack_with_hashcat: password from potfile (fallback): {password!r}")
+                                    break
+                    else:
+                        log_debug("crack_with_hashcat: no new potfile entries and potfile had pre-existing data — password not found")
             except Exception as pe:
                 log_debug(f"crack_with_hashcat: potfile read error: {pe}")
         else:
@@ -687,9 +753,14 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
             except Exception as e2:
                 log_debug("crack_with_hashcat: diagnostic also failed", str(e2))
 
+            _log_hashcat_output("RESULT", ["Hashcat FAILED (crash/error)"])
+            log_debug("crack_with_hashcat: returning None (hashcat crashed/failed)")
+            return None
+
+        # Normal exhaust: rc in (0,1), no password found
         _log_hashcat_output("RESULT", ["No password found"])
-        log_debug("crack_with_hashcat: returning None (no password)")
-        return None
+        log_debug("crack_with_hashcat: returning HASHCAT_EXHAUSTED (password not found)")
+        return HASHCAT_EXHAUSTED
 
     except FileNotFoundError as e:
         _log_hashcat_output("CRASH", [f"FileNotFoundError: {e}"])
@@ -708,7 +779,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         sys.stdout.write("\r" + " " * 110 + "\r")
         sys.stdout.flush()
         colored_log("warning", "Hashcat cracking interrupted by user.")
-        return None
+        return HASHCAT_EXHAUSTED
     except Exception as e:
         _spinner_stop.set()
         if proc:
@@ -734,11 +805,6 @@ def hashcat_crack_handshake(
     log_debug("hashcat_crack_handshake: ensure_hashcat OK")
     add_bin_to_path()
 
-    # Warm up GPU kernels on first run (one-time compilation, 30-90s)
-    if not warmup_hashcat_kernel():
-        log_debug("hashcat_crack_handshake: warmup failed, continuing anyway")
-        colored_log("warning", "GPU kernel warmup skipped — hashcat may take longer on first run.")
-
     colored_log("info", "Converting .cap to hashcat format (hc22000)...")
     hc22000_path = os.path.join(
         HCOV_DIR,
@@ -750,6 +816,10 @@ def hashcat_crack_handshake(
         colored_log("error", "Failed to convert .cap to hc22000 format.")
         log_debug("hashcat_crack_handshake: convert_cap_to_hc22000 returned False")
         return None
+
+    # Warm up GPU kernels using the real converted hash (guarantees valid format)
+    if not warmup_hashcat_kernel(hc22000_path):
+        log_debug("hashcat_crack_handshake: warmup failed, continuing anyway")
 
     log_debug(f"hashcat_crack_handshake: conversion OK, calling crack_with_hashcat")
     result = crack_with_hashcat(hc22000_path, wordlist_path, display_essid)

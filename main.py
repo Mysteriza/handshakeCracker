@@ -58,7 +58,8 @@ from src.config import HANDSHAKES_DIR, WORDLIST_NAME
 from src.utils import sanitize_ssid, scan_default_directory, count_wordlist_lines
 from src.validator import validate_all_handshakes
 from src.cracker import get_already_cracked_essids, crack_handshake
-from src.hashcat_cracker import hashcat_crack_handshake
+from src.hashcat_cracker import hashcat_crack_handshake, HASHCAT_EXHAUSTED
+from src.gpu import has_discrete_gpu
 from src.setup import auto_setup
 
 
@@ -196,7 +197,8 @@ def main():
         gpu_name = setup.get("gpu_name")
 
         if use_hashcat and gpu_name:
-            colored_log("info", f"GPU detected: {gpu_name} — using hashcat (GPU).")
+            gpu_type = "Discrete" if has_discrete_gpu() else "Integrated"
+            colored_log("info", f"GPU detected: {gpu_name} ({gpu_type}) — using hashcat (GPU).")
         elif use_hashcat:
             colored_log("info", "Using hashcat (GPU/OpenCL).")
         else:
@@ -303,6 +305,10 @@ def main():
                         handshake_path, wordlist_path, base_essid
                     )
                     log_debug(f"main: aircrack-ng returned {cracked!r}")
+                elif cracked is HASHCAT_EXHAUSTED:
+                    cracked = None  # normalize for display logic below
+                    console.print("")
+                    colored_log("warning", "Password not found in wordlist. Try a larger wordlist.")
             else:
                 log_debug(f"main: routing to aircrack-ng for {base_essid}")
                 cracked = crack_handshake(
