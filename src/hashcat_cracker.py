@@ -207,7 +207,7 @@ def warmup_hashcat_kernel() -> bool:
 
     if _kernel_cache_exists(hc_dir):
         log_debug("warmup_hashcat_kernel: kernel cache found, skipping compilation")
-        colored_log("info", "GPU kernel cache ditemukan — kompilasi tidak diperlukan.")
+        colored_log("info", "GPU kernel cache found — compilation not required.")
         return True
 
     dummy_hc22000 = os.path.join(HCOV_DIR, "_warmup.hc22000")
@@ -222,7 +222,7 @@ def warmup_hashcat_kernel() -> bool:
     potfile = os.path.join(HCOV_DIR, "_warmup.potfile")
     cmd = [
         hc_exe, "-m", "22000", "-a", "0",
-        "-w", "1", "-O",
+        "-w", "1",
         "--potfile-path", potfile,
         dummy_hc22000, dummy_wordlist,
     ]
@@ -233,10 +233,10 @@ def warmup_hashcat_kernel() -> bool:
         # ── Banner ──────────────────────────────────────────────────
         console.rule("[bold yellow]GPU Kernel Compilation (First Run)[/bold yellow]", style="yellow")
         console.print("")
-        colored_log("info", "Kompilasi kernel GPU untuk mode WPA/WPA2 (hashcat -m 22000)...")
-        console.print("  [dim]Hashcat perlu mengkompilasi GPU kernel satu kali.[/dim]")
-        console.print("  [dim]Waktu: ~30-90 detik tergantung GPU dan driver.[/dim]")
-        console.print("  [dim]Hasil kompilasi akan di-cache — next run langsung siap.[/dim]")
+        colored_log("info", "Compiling GPU kernel for WPA/WPA2 mode (hashcat -m 22000)...")
+        console.print("  [dim]Hashcat needs to compile the GPU kernel once.[/dim]")
+        console.print("  [dim]Time: ~30-90 seconds depending on GPU and driver.[/dim]")
+        console.print("  [dim]Compiled kernels are cached — next run will be ready instantly.[/dim]")
         console.print("")
 
         start = time.time()
@@ -293,11 +293,11 @@ def warmup_hashcat_kernel() -> bool:
 
         if proc.returncode == 0:
             if elapsed > 5:
-                colored_log("success", f"Kompilasi GPU kernel selesai ({int(elapsed)}s). Cache tersimpan.")
+                colored_log("success", f"GPU kernel compilation completed ({int(elapsed)}s). Cache saved.")
             else:
-                colored_log("success", "GPU kernel sudah siap digunakan.")
+                colored_log("success", "GPU kernel is ready to use.")
         else:
-            colored_log("warning", "Kompilasi GPU kernel gagal — fallback ke aircrack-ng (CPU).")
+            colored_log("warning", "GPU kernel compilation failed — falling back to aircrack-ng (CPU).")
 
         console.rule(style="yellow")
         return proc.returncode == 0
@@ -737,7 +737,7 @@ def hashcat_crack_handshake(
     # Warm up GPU kernels on first run (one-time compilation, 30-90s)
     if not warmup_hashcat_kernel():
         log_debug("hashcat_crack_handshake: warmup failed, continuing anyway")
-        colored_log("warning", "Kernel GPU warmup skipped — hashcat may take longer on first run.")
+        colored_log("warning", "GPU kernel warmup skipped — hashcat may take longer on first run.")
 
     colored_log("info", "Converting .cap to hashcat format (hc22000)...")
     hc22000_path = os.path.join(

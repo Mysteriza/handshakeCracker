@@ -193,7 +193,18 @@ def main():
             sys.exit(1)
 
         use_hashcat = setup.get("hashcat_available", False)
-        log_debug(f"main: hashcat={'yes' if use_hashcat else 'no'}, aircrack-ng={'yes' if setup.get('aircrack_available') else 'no'}")
+        gpu_name = setup.get("gpu_name")
+
+        if use_hashcat and gpu_name:
+            colored_log("info", f"GPU detected: {gpu_name} — using hashcat (GPU).")
+        elif use_hashcat:
+            colored_log("info", "Using hashcat (GPU/OpenCL).")
+        else:
+            colored_log("info", "Using aircrack-ng (CPU).")
+
+        log_debug(f"main: hashcat={'yes' if use_hashcat else 'no'}, "
+                  f"gpu_name={gpu_name}, "
+                  f"aircrack-ng={'yes' if setup.get('aircrack_available') else 'no'}")
 
         wordlist_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME
