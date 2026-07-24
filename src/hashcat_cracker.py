@@ -47,16 +47,11 @@ def get_hashcat_path() -> str | None:
 
 
 def _extract_archive(archive: str, dest: str) -> bool:
+    if not os.path.isfile(archive):
+        log_error(f"_extract_archive: archive not found: {archive}")
+        return False
+
     log_debug(f"_extract_archive: archive={archive} dest={dest}")
-    if archive.endswith('.zip'):
-        try:
-            import zipfile
-            with zipfile.ZipFile(archive, 'r') as z:
-                z.extractall(path=dest)
-            log_debug("_extract_archive: zip extraction OK")
-            return True
-        except Exception as e:
-            log_debug("_extract_archive: zip extraction failed", str(e))
 
     extractor_name = "7z"
     try:
@@ -164,6 +159,45 @@ def _kernel_cache_exists(hc_dir: str) -> bool:
     return False
 
 
+def _line_is_noise(line: str) -> bool:
+    """Return True if a hashcat status line should be filtered from user display."""
+    if not line:
+        return True
+    # Hash content lines
+    if line.startswith("WPA*02*") or line.startswith("$WPAPSK$"):
+        return True
+    # Status / statistics lines
+    noise_prefixes = [
+        "Session..........:",
+        "Status...........:",
+        "Hash.Target......:",
+        "Time.Started.....:",
+        "Time.Estimated...:",
+        "Speed.Chars/sec..:",
+        "Speed.Dev.#",
+        "Speed.GPU.#",
+        "Progress.........:",
+        "Restore.Point....:",
+        "Restore.Subsec...:",
+        "Candidate.Engine.:",
+        "Candidates.......:",
+        "HWMon.GPU.#",
+        "HWMon.Dev.#",
+        "Started.........:",
+        "Stopped.........:",
+        "Input.Mode......:",
+        "Watchdog........:",
+        "[s]tatus",
+        "[p]ause",
+        "[b]ypass",
+        "[c]heckpoint",
+        "[q]uit",
+        "The password was found",
+        "Password found on device",
+    ]
+    return any(line.startswith(p) for p in noise_prefixes)
+
+
 def warmup_hashcat_kernel() -> bool:
     hc_exe = get_hashcat_path()
     if not hc_exe:
@@ -173,7 +207,7 @@ def warmup_hashcat_kernel() -> bool:
 
     if _kernel_cache_exists(hc_dir):
         log_debug("warmup_hashcat_kernel: kernel cache found, skipping compilation")
-        colored_log("info", "Kernel GPU Hashcat sudah siap (cache ditemukan).")
+        colored_log("info", "GPU kernel cache ditemukan — kompilasi tidak diperlukan.")
         return True
 
     dummy_hc22000 = os.path.join(HCOV_DIR, "_warmup.hc22000")
@@ -190,14 +224,24 @@ def warmup_hashcat_kernel() -> bool:
         hc_exe, "-m", "22000", "-a", "0",
         "-w", "1",
         "--potfile-path", potfile,
-        dummy_hc22000, dummy_wordlist
+        dummy_hc22000, dummy_wordlist,
     ]
 
     try:
         log_debug("warmup_hashcat_kernel: no kernel cache found, running first-time compilation")
-        colored_log("info", "Kompilasi Kernel GPU pertama kali (one-time, 30-90 detik)...")
-        console.print("  Proses ini hanya terjadi sekali. Jangan tutup program.")
+
+        # ── Banner ──────────────────────────────────────────────────
+        console.rule("[bold yellow]GPU Kernel Compilation (First Run)[/bold yellow]", style="yellow")
+        console.print("")
+        colored_log("info", "Kompilasi kernel GPU untuk mode WPA/WPA2 (hashcat -m 22000)...")
+        console.print("  [dim]Hashcat perlu mengkompilasi GPU kernel satu kali.[/dim]")
+        console.print("  [dim]Waktu: ~30-90 detik tergantung GPU dan driver.[/dim]")
+        console.print("  [dim]Hasil kompilasi akan di-cache — next run langsung siap.[/dim]")
+        console.print("")
+
         start = time.time()
+        device_found = False
+        kernel_compiling = False
 
         # Do NOT use CREATE_NO_WINDOW — it breaks Hashcat stdout pipe on Windows
         proc = subprocess.Popen(
@@ -208,20 +252,56 @@ def warmup_hashcat_kernel() -> bool:
         )
 
         assert proc.stdout is not None, "stdout pipe not created"
+
         for line in proc.stdout:
-            line_str = line.strip()
-            if line_str and not line_str.startswith("WPA*02*"):
-                console.print(f"  [cyan]│[/cyan] {line_str}")
+            line_str = line.rstrip('\n\r')
+
+            if _line_is_noise(line_str):
+                continue
+
+            # Highlight device detection lines
+            if line_str.startswith("* Device #"):
+                device_found = True
+                console.print(f"  [cyan]▸[/cyan] [bold]{line_str}[/bold]")
+                continue
+
+            # Highlight kernel compilation message
+            if "Kernels compiled" in line_str or "compiling device kernel" in line_str:
+                kernel_compiling = True
+                console.print(f"  [yellow]⚡[/yellow] [bold]{line_str}[/bold]")
+                continue
+
+            # Show kernel notices (ptxas info etc.)
+            if "Kernel.Notices" in line_str or "ptxas info" in line_str:
+                console.print(f"  [dim]ℹ[/dim] {line_str}")
+                continue
+
+            # Show hashcat version banner
+            if line_str.startswith("hashcat "):
+                console.print(f"  [green]▶[/green] {line_str}")
+                continue
+
+            # Everything else meaningful
+            if line_str:
+                console.print(f"  [white]│[/white] {line_str}")
 
         proc.wait(timeout=300)
         elapsed = time.time() - start
         log_debug(f"warmup_hashcat_kernel: finished in {elapsed:.2f}s (rc={proc.returncode})")
 
-        if elapsed > 5:
-            colored_log("success", f"Kompilasi Kernel GPU selesai ({int(elapsed)}s). Cache tersimpan.")
+        console.print("")
+
+        if proc.returncode == 0:
+            if elapsed > 5:
+                colored_log("success", f"Kompilasi GPU kernel selesai ({int(elapsed)}s). Cache tersimpan.")
+            else:
+                colored_log("success", "GPU kernel sudah siap digunakan.")
         else:
-            colored_log("success", "Kernel GPU Hashcat siap.")
-        return True
+            colored_log("warning", "Kompilasi GPU kernel gagal — fallback ke aircrack-ng (CPU).")
+
+        console.rule(style="yellow")
+        return proc.returncode == 0
+
     except Exception as e:
         log_debug(f"warmup_hashcat_kernel: failed ({e})")
         return False
@@ -364,7 +444,7 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
         eapol_raw_bytes = eapol_raw_bytes[:declared_len]
 
     log_debug(f"convert_cap_to_hc22000: extracted ap_mac={ap_mac} sta_mac={sta_mac}")
-log_debug(f"convert_cap_to_hc22000: anonce_len={len(anonce or '')} snonce_len={len(snonce or '')} mic_len={len(mic or '')} key_ver={key_ver}")
+    log_debug(f"convert_cap_to_hc22000: anonce_len={len(anonce or '')} snonce_len={len(snonce or '')} mic_len={len(mic or '')} key_ver={key_ver}")
     log_debug(f"convert_cap_to_hc22000: eapol_raw_bytes_len={len(eapol_raw_bytes or b'')}")
 
     if not all([ap_mac, sta_mac, anonce, snonce, mic, key_ver]):
@@ -526,7 +606,6 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         line_count = 0
         kernel_init_done = False
 
-        assert proc.stdout is not None
         for raw_line in proc.stdout:
             line = raw_line.rstrip()
             line_count += 1
@@ -654,6 +733,11 @@ def hashcat_crack_handshake(
 
     log_debug("hashcat_crack_handshake: ensure_hashcat OK")
     add_bin_to_path()
+
+    # Warm up GPU kernels on first run (one-time compilation, 30-90s)
+    if not warmup_hashcat_kernel():
+        log_debug("hashcat_crack_handshake: warmup failed, continuing anyway")
+        colored_log("warning", "Kernel GPU warmup skipped — hashcat may take longer on first run.")
 
     colored_log("info", "Converting .cap to hashcat format (hc22000)...")
     hc22000_path = os.path.join(

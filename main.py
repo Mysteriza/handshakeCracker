@@ -55,7 +55,7 @@ from prompt_toolkit.history import InMemoryHistory
 
 from src.console import console, colored_log, log_error, log_debug
 from src.config import HANDSHAKES_DIR, WORDLIST_NAME
-from src.utils import sanitize_ssid, scan_default_directory
+from src.utils import sanitize_ssid, scan_default_directory, count_wordlist_lines
 from src.validator import validate_all_handshakes
 from src.cracker import get_already_cracked_essids, crack_handshake
 from src.hashcat_cracker import hashcat_crack_handshake
@@ -122,24 +122,16 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
                 colored_log("warning", "Falling back to default wordlist.")
                 return default_path
 
-        # Count lines in custom wordlist
-        try:
-            with open(custom_path, 'rb') as f:
-                lines = sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
+        lines = count_wordlist_lines(custom_path)
+        if lines:
             colored_log("info", f"Custom wordlist loaded: {lines:,} passwords.".replace(",", "."))
-        except OSError:
-            pass
 
         return custom_path
 
     # Default: count lines if available
-    if os.path.exists(default_path):
-        try:
-            with open(default_path, 'rb') as f:
-                lines = sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
-            colored_log("info", f"{lines:,} passwords loaded.".replace(",", "."))
-        except OSError:
-            pass
+    lines = count_wordlist_lines(default_path)
+    if lines:
+        colored_log("info", f"{lines:,} passwords loaded.".replace(",", "."))
 
     return default_path
 
@@ -206,10 +198,8 @@ def main():
         wordlist_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME
         )
-        wordlist_lines = 0
-        if os.path.exists(wordlist_path):
-            with open(wordlist_path, 'rb') as f:
-                wordlist_lines = sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
+        wordlist_lines = count_wordlist_lines(wordlist_path)
+        if wordlist_lines:
             colored_log("info", f"{wordlist_lines:,} passwords loaded.".replace(",", "."))
 
         session = PromptSession(history=InMemoryHistory())
