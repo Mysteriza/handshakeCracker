@@ -208,13 +208,6 @@ def main():
                   f"gpu_name={gpu_name}, "
                   f"aircrack-ng={'yes' if setup.get('aircrack_available') else 'no'}")
 
-        wordlist_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME
-        )
-        wordlist_lines = count_wordlist_lines(wordlist_path)
-        if wordlist_lines:
-            colored_log("info", f"{wordlist_lines:,} passwords loaded.".replace(",", "."))
-
         session = PromptSession(history=InMemoryHistory())
 
         # ── Wordlist selection ─────────────────────────────────────────
@@ -238,10 +231,7 @@ def main():
                 sys.exit(0)
         else:
             handshake_queue.extend(found_files)
-            console.print(
-                f"Found {len(found_files)} .cap/.pcap files "
-                f"in '{HANDSHAKES_DIR}'."
-            )
+            colored_log("info", f"Found {len(found_files)} .cap/.pcap file(s) in '{HANDSHAKES_DIR}'.")
 
         if not handshake_queue:
             colored_log("warning", "No handshake files to process. Exiting.")
@@ -307,7 +297,6 @@ def main():
                     log_debug(f"main: aircrack-ng returned {cracked!r}")
                 elif cracked is HASHCAT_EXHAUSTED:
                     cracked = None  # normalize for display logic below
-                    console.print("")
                     colored_log("warning", "Password not found in wordlist. Try a larger wordlist.")
             else:
                 log_debug(f"main: routing to aircrack-ng for {base_essid}")
@@ -317,9 +306,9 @@ def main():
                 log_debug(f"main: aircrack-ng returned {cracked!r}")
 
             if cracked:
-                console.print(f"  Done.")
+                console.print(f"  [green]Done.[/green]")
             else:
-                console.print(f"  Failed.")
+                console.print(f"  [red]Failed.[/red]")
 
         console.print(f"\n{SEPARATOR}")
         console.print("All handshakes have been processed!")

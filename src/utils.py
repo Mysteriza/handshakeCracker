@@ -28,7 +28,7 @@ def scan_default_directory(directory_path: str) -> list[str]:
         colored_log("error", f"Default directory {directory_path} not found.")
         return []
 
-    colored_log("info", f"Scanning directory: {directory_path} for .cap/.pcap files...")
+    colored_log("info", f"Scanning {directory_path}/ for .cap/.pcap files...")
     for root, _, files in os.walk(directory_path):
         for file in files:
             if file.lower().endswith((".cap", ".pcap")):
