@@ -3,9 +3,9 @@
 Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Windows + Linux), fully automatic setup.
 
 > **⚠️ GPU acceleration (hashcat + OpenCL)**
-> Hashcat GPU cracking is enabled on this branch. On Windows, hashcat opens a separate console window
+> Hashcat GPU cracking is the default engine. On Windows, hashcat opens a separate console window
 > during cracking — this is a known limitation (stdout piping breaks with `CREATE_NO_WINDOW`).
-> Hashcat falls back gracefully to aircrack-ng (CPU) if unavailable or if GPU kernel compilation fails.
+> Falls back to aircrack-ng (CPU) only if hashcat is unavailable or crashes.
 
 ## Screenshots
 <img width="1005" height="896" alt="22-07-2026_15-08" src="https://github.com/user-attachments/assets/43b236e3-3ba4-4525-afbe-1a5e0b28940d" />
@@ -13,8 +13,9 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 ## Features
 
 - **Custom wordlist** — Choose between the default wordlist or your own `.txt` file at runtime
-- **GPU acceleration** — Hashcat (GPU) auto-detected and used when available; falls back to aircrack-ng (CPU)
-- **One-time kernel warmup** — First run compiles GPU kernels with progress feedback (30-90s)
+- **GPU acceleration** — Hashcat (GPU) is the primary cracker; auto-falls back to aircrack-ng (CPU) only on failure
+- **Smart fallback** — If hashcat exhausts all passwords without a match, skips aircrack-ng instead of wasting time
+- **One-time kernel warmup** — First run compiles GPU kernels with live spinner (30-90s), cached for subsequent runs
 - **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches wordlist on first run
 - **Cross-platform** — Windows auto-downloads binaries; Linux auto-installs via apt-get
 - **EAPOL validation** — Scapy-based M1/M2/M3/M4 table rejects invalid captures before cracking
@@ -34,8 +35,8 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 | GPU (hashcat + GTX 1060) | Dedicated GPU | ~300,000 | ~33 seconds |
 | GPU (hashcat + RTX 3080) | Dedicated GPU | ~1,200,000 | ~8 seconds |
 
-> Hashcat uses **GPU** when available. Aircrack-ng (CPU) is the fallback if hashcat detection fails
-> or if GPU kernel compilation encounters issues.
+> Hashcat uses **GPU** as the primary cracker. Aircrack-ng (CPU) is the fallback only if hashcat
+> is unavailable or crashes during execution.
 
 ## Prerequisites
 
@@ -67,7 +68,7 @@ The program auto-installs all dependencies on first run. No manual setup require
    ```
    - **Option 1** — Uses the auto-downloaded default wordlist
    - **Option 2** — Enter a path to your own wordlist file (TAB completion supported)
-4. The program validates handshakes, cracks them **(GPU via hashcat if available, otherwise CPU via aircrack-ng)**, and saves results to `cracked_results/`
+4. The program validates handshakes, cracks them **(GPU via hashcat by default, CPU via aircrack-ng only if hashcat fails)**, and saves results to `cracked_results/`
 
 ### Manual file entry
 
@@ -92,6 +93,7 @@ handshakeCracker/
 └── src/
     ├── config.py        # URLs, paths, constants
     ├── console.py       # Terminal helpers + error logging
+    ├── gpu.py           # GPU detection (informational)
     ├── utils.py          # Download, extraction, utilities
     ├── validator.py      # Scapy handshake validation
     ├── cracker.py        # Aircrack-ng cracking (CPU)
