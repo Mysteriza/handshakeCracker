@@ -244,18 +244,14 @@ def warmup_hashcat_kernel(hc22000_path: str | None = None) -> bool:
     try:
         log_debug("warmup_hashcat_kernel: no kernel cache found, running first-time compilation")
 
-        # ── Banner ──────────────────────────────────────────────────
+        # ── Warmup Banner ───────────────────────────────────────────
         console.rule("[bold yellow]GPU Kernel Compilation (First Run)[/bold yellow]", style="yellow")
-        console.print("")
-        colored_log("info", "Compiling GPU kernel for WPA/WPA2 mode (hashcat -m 22000)...")
-        console.print("  [dim]Hashcat needs to compile the GPU kernel once.[/dim]")
-        console.print("  [dim]Time: ~30-90 seconds depending on GPU and driver.[/dim]")
-        console.print("  [dim]Compiled kernels are cached — next run will be ready instantly.[/dim]")
+        colored_log("info", "Compiling GPU kernel for WPA/WPA2 cracking...")
+        console.print("  [dim]This one-time step prepares your GPU for faster cracking.[/dim]")
+        console.print("  [dim]Time: ~30–90 seconds depending on GPU and driver.[/dim]")
         console.print("")
 
         start = time.time()
-        device_found = False
-        kernel_compiling = False
 
         # Do NOT use CREATE_NO_WINDOW — it breaks Hashcat stdout pipe on Windows
         proc = subprocess.Popen(
@@ -267,51 +263,47 @@ def warmup_hashcat_kernel(hc22000_path: str | None = None) -> bool:
 
         assert proc.stdout is not None, "stdout pipe not created"
 
+        # Collect output silently with a simple progress spinner
+        output_lines: list[str] = []
+        device_name = ""
+        import threading
+        _spin_stop = threading.Event()
+
+        def _spin():
+            chars = ['-', '\\', '|', '/']
+            c = 0
+            while not _spin_stop.is_set():
+                sys.stdout.write(f"\r  {chars[c % 4]} Compiling GPU kernel...")
+                sys.stdout.flush()
+                c += 1
+                time.sleep(0.25)
+
+        spin_thread = threading.Thread(target=_spin, daemon=True)
+        spin_thread.start()
+
         for line in proc.stdout:
             line_str = line.rstrip('\n\r')
+            output_lines.append(line_str)
 
-            if _line_is_noise(line_str):
-                continue
-
-            # Highlight device detection lines
+            # Capture device name for the summary
             if line_str.startswith("* Device #"):
-                device_found = True
-                console.print(f"  [cyan]▸[/cyan] [bold]{line_str}[/bold]")
-                continue
-
-            # Highlight kernel compilation message
-            if "Kernels compiled" in line_str or "compiling device kernel" in line_str:
-                kernel_compiling = True
-                console.print(f"  [yellow]⚡[/yellow] [bold]{line_str}[/bold]")
-                continue
-
-            # Show kernel notices (ptxas info etc.)
-            if "Kernel.Notices" in line_str or "ptxas info" in line_str:
-                console.print(f"  [dim]ℹ[/dim] {line_str}")
-                continue
-
-            # Show hashcat version banner
-            if line_str.startswith("hashcat "):
-                console.print(f"  [green]▶[/green] {line_str}")
-                continue
-
-            # Everything else meaningful
-            if line_str:
-                console.print(f"  [white]│[/white] {line_str}")
+                device_name = line_str.split(",")[0].replace("* Device #1: ", "").strip()
 
         proc.wait(timeout=300)
+        _spin_stop.set()
+        spin_thread.join(timeout=2)
+        sys.stdout.write("\r" + " " * 40 + "\r")  # clear spinner
+        sys.stdout.flush()
+
         elapsed = time.time() - start
         log_debug(f"warmup_hashcat_kernel: finished in {elapsed:.2f}s (rc={proc.returncode})")
 
+        # Show a clean result summary
         console.print("")
-
         if proc.returncode == 0:
-            if elapsed > 5:
-                colored_log("success", f"GPU kernel compilation completed ({int(elapsed)}s). Cache saved.")
-            else:
-                colored_log("success", "GPU kernel is ready to use.")
+            colored_log("success", f"GPU kernel ready{' on ' + device_name if device_name else ''} ({int(elapsed)}s). Cached for next run.")
         else:
-            colored_log("warning", "GPU kernel compilation failed — warmup skipped, using hashcat for actual cracking.")
+            colored_log("warning", "GPU kernel compilation skipped — will use hashcat with default kernels.")
 
         console.rule(style="yellow")
         return proc.returncode == 0
