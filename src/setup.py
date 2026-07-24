@@ -1,6 +1,7 @@
 import os
 import platform
 import subprocess
+import sys
 
 from rich.panel import Panel
 from rich.text import Text
@@ -161,13 +162,69 @@ def ensure_wordlist() -> bool:
     return False
 
 
-def auto_setup() -> bool:
-    show_banner()
-    if not ensure_aircrack():
-        return False
-    if not ensure_directories():
-        return False
-    if not ensure_wordlist():
-        return False
+def ensure_python_dependencies() -> bool:
+    """Install required Python packages from requirements.txt if missing."""
+    req_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "requirements.txt")
+    if not os.path.isfile(req_path):
+        colored_log("warning", "requirements.txt not found, skipping Python dependency check.")
+        return True
 
-    return True
+    try:
+        import rich
+        import prompt_toolkit
+        import scapy
+        return True
+    except ImportError:
+        pass
+
+    colored_log("info", "Installing Python dependencies from requirements.txt...")
+
+    def _pip_install(req_path: str) -> bool:
+        base_cmd = [sys.executable, "-m", "pip", "install", "--user", "-r", req_path]
+        try:
+            subprocess.run(base_cmd, check=True, capture_output=True, text=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            err = (e.stderr or "").lower()
+            if "externally-managed" in err:
+                colored_log("warning", "PEP 668 detected — retrying with --break-system-packages...")
+                try:
+                    subprocess.run(base_cmd + ["--break-system-packages"],
+                                   check=True, capture_output=True, text=True)
+                    return True
+                except subprocess.CalledProcessError:
+                    return False
+            return False
+        except Exception:
+            return False
+
+    if _pip_install(req_path):
+        colored_log("success", "Python dependencies installed.")
+        return True
+
+    log_error("Failed to install Python dependencies")
+    colored_log("error", "Install manually: pip install --user -r requirements.txt")
+    colored_log("info", "Or if blocked by PEP 668: pip install --break-system-packages -r requirements.txt")
+    return False
+
+
+def auto_setup() -> dict:
+    """Run full auto-setup. Returns dict with availability flags."""
+    show_banner()
+
+    ensure_python_dependencies()
+
+    aircrack_ok = ensure_aircrack()
+    dirs_ok = ensure_directories()
+    wordlist_ok = ensure_wordlist()
+
+    if not aircrack_ok:
+        colored_log("error", "aircrack-ng is required but not available.")
+        return {"aircrack_available": False, "hashcat_available": False}
+
+    return {
+        "aircrack_available": aircrack_ok,
+        "hashcat_available": False,
+        "directories_ready": dirs_ok,
+        "wordlist_ready": wordlist_ok,
+    }
