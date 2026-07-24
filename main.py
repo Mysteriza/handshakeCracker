@@ -13,16 +13,16 @@ def _pip_install_requirements(req_path: str) -> bool:
     """Install pip packages with PEP 668 fallback."""
     base_cmd = [sys.executable, "-m", "pip", "install", "--user", "-r", req_path]
     try:
-        subprocess.check_call(base_cmd)
+        subprocess.run(base_cmd, check=True, capture_output=True, text=True)
         return True
     except subprocess.CalledProcessError as e:
-        stderr = (e.stderr or "").lower() if e.stderr else ""
-        stdout = (e.stdout or "").lower() if e.stdout else ""
+        stderr = (e.stderr or "").lower()
+        stdout = (e.stdout or "").lower()
         # PEP 668: externally-managed-environment
         if "externally-managed" in stderr or "externally-managed" in stdout:
             print("Detected PEP 668 (externally-managed environment). Retrying with --break-system-packages...")
             try:
-                subprocess.check_call(base_cmd + ["--break-system-packages"])
+                subprocess.run(base_cmd + ["--break-system-packages"], check=True, capture_output=True, text=True)
                 return True
             except subprocess.CalledProcessError:
                 return False
@@ -97,7 +97,11 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
     console.print(f"  1. Use default wordlist ({os.path.basename(default_path)})")
     console.print("  2. Use custom wordlist file")
 
-    choice = input("  Choose [1/2] (default: 1): ").strip()
+    while True:
+        choice = input("  Choose [1/2] (default: 1): ").strip()
+        if choice in ("", "1", "2"):
+            break
+        colored_log("error", "Invalid choice. Enter 1 for default or 2 for custom.")
 
     if choice == "2":
         console.print("  Example: C:\\Users\\You\\wordlist.txt  or  /home/user/wordlist.txt")
