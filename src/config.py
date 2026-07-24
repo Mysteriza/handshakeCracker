@@ -32,4 +32,4 @@ HCOV_DIR = _find_writable_dir("hc22000_cache")
 
 DEPS_DIR = "dependencies"
 AIRCRACK_ZIP_NAME = "aircrack-ng-1.7-win.zip"
-HASHCAT_ARCHIVE_NAME = f"hashcat-{HASHCAT_VERSION}.zip"
+HASHCAT_ARCHIVE_NAME = f"hashcat-{HASHCAT_VERSION}.7z"

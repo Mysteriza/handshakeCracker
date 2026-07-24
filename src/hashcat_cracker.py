@@ -58,26 +58,37 @@ def _extract_archive(archive: str, dest: str) -> bool:
         except Exception as e:
             log_debug("_extract_archive: zip extraction failed", str(e))
 
+    extractor_name = "7z"
     try:
-        sz = os.path.join(dest, "7zr.exe")
-        if not os.path.isfile(sz):
-            colored_log("info", "Downloading 7-Zip standalone extractor...")
-            log_debug("_extract_archive: downloading 7zr.exe")
-            from src.utils import download_with_progress
-            download_with_progress(
-                "https://www.7-zip.org/a/7zr.exe", sz,
-                "Downloading 7zr")
-        log_debug(f"_extract_archive: extracting with 7zr from {archive}")
+        if _SYSTEM == "Windows":
+            sz = os.path.join(dest, "7zr.exe")
+            if not os.path.isfile(sz):
+                colored_log("info", "Downloading 7-Zip standalone extractor...")
+                log_debug("_extract_archive: downloading 7zr.exe")
+                from src.utils import download_with_progress
+                download_with_progress(
+                    "https://www.7-zip.org/a/7zr.exe", sz,
+                    "Downloading 7zr")
+            extractor = [sz, "x", archive, f"-o{dest}", "-y"]
+            extractor_name = "7zr"
+        else:
+            # Linux / macOS: use system 7z (p7zip-full)
+            extractor = ["7z", "x", archive, f"-o{dest}", "-y"]
+
+        log_debug(f"_extract_archive: extracting with {extractor[0]} from {archive}")
         r = subprocess.run(
-            [sz, "x", archive, f"-o{dest}", "-y"],
+            extractor,
             capture_output=True, text=True, timeout=120)
         ok = r.returncode == 0
-        log_debug(f"_extract_archive: 7zr exit code={r.returncode} ok={ok}")
+        log_debug(f"_extract_archive: {extractor[0]} exit code={r.returncode} ok={ok}")
         if not ok:
-            log_debug("_extract_archive: 7zr stderr", r.stderr[:500])
+            log_debug(f"_extract_archive: {extractor[0]} stderr", r.stderr[:500])
         return ok
+    except FileNotFoundError:
+        log_error("7z not found. Install it: sudo apt-get install p7zip-full  (or  brew install p7zip on macOS)")
+        return False
     except Exception as e:
-        log_debug("_extract_archive: 7zr exception", str(e))
+        log_debug(f"_extract_archive: {extractor_name} exception", str(e))
         return False
 
 
