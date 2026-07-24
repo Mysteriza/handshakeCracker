@@ -82,7 +82,7 @@ class PcapValidator(Validator):
 
 class WordlistValidator(Validator):
     def validate(self, document):
-        text = document.text.strip()
+        text = document.text.strip().strip('"\'')
         if not text:
             raise ValidationError(message="Path cannot be empty.", cursor_position=0)
         if not os.path.isfile(text):
@@ -100,14 +100,17 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
     choice = input("  Choose [1/2] (default: 1): ").strip()
 
     if choice == "2":
+        console.print("  Example: C:\\Users\\You\\wordlist.txt  or  /home/user/wordlist.txt")
+        console.print("  Press TAB for auto-completion.")
         while True:
             try:
-                custom_path = session.prompt(
+                raw_path = session.prompt(
                     "  Custom wordlist path: ",
                     completer=PathCompleter(only_directories=False, expanduser=True),
                     validator=WordlistValidator(),
                     validate_while_typing=True,
                 ).strip()
+                custom_path = raw_path.strip('"\'')
                 break
             except ValidationError as e:
                 colored_log("error", str(e))
@@ -193,8 +196,8 @@ def main():
         if not setup.get("aircrack_available") and not setup.get("hashcat_available"):
             sys.exit(1)
 
-        use_hashcat = setup.get("hashcat_available", False)
-        log_debug(f"main: hashcat={'yes' if use_hashcat else 'no'}, aircrack-ng={'yes' if setup.get('aircrack_available') else 'no'}")
+        use_hashcat = False
+        log_debug(f"main: hashcat disabled, using aircrack-ng")
 
         session = PromptSession(history=InMemoryHistory())
 

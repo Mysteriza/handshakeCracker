@@ -13,8 +13,8 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 
 ## Features
 
-- **GPU acceleration (disabled)** — Detects discrete GPU but hashcat is currently broken on NVIDIA Windows (OpenCL hang). All cracking uses aircrack-ng (CPU) for now.
-- **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches wordlist on first run
+- **Custom wordlist** — Choose between the default wordlist or your own `.txt` file at runtime
+- **Zero-config** — Auto-installs Python packages, downloads aircrack-ng, and fetches wordlist on first run
 - **Cross-platform** — Windows auto-downloads binaries; Linux auto-installs via apt-get
 - **EAPOL validation** — Scapy-based M1/M2/M3/M4 table rejects invalid captures before cracking
 - **Batch processing** — Queue multiple .cap/.pcap files from `handshakes/`
@@ -29,8 +29,6 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 |--------|--------|:------------:|:-------------:|
 | CPU (aircrack-ng) | 4-core laptop | ~2,000 | ~83 minutes |
 | CPU (aircrack-ng) | 16-core desktop | ~8,000 | ~21 minutes |
-| GPU (hashcat) | RTX 3060 | ~300,000 | ~50 seconds |
-| GPU (hashcat) | RTX 4090 | ~1,200,000 | ~12 seconds |
 
 ## Prerequisites
 
@@ -45,13 +43,33 @@ cd handshakeCracker
 ```
 
 The program auto-installs all dependencies on first run. No manual setup required.
-1. Place .cap/.pcap files in `handshakes/`
-2. Run the program:
-```bash
-python main.py
-```
 
-3. It auto-detects GPU → tries hashcat (falls back to aircrack-ng), validates handshakes with Scapy, and cracks them
+## Usage
+
+1. Place `.cap`/`.pcap` files in `handshakes/`
+2. Run the program:
+   ```bash
+   python main.py
+   ```
+3. **Wordlist selection** — You'll be prompted:
+   ```
+   Wordlist Selection
+     1. Use default wordlist (wifite.txt)
+     2. Use custom wordlist file
+     Choose [1/2] (default: 1):
+   ```
+   - **Option 1** — Uses the auto-downloaded default wordlist
+   - **Option 2** — Enter a path to your own wordlist file (TAB completion supported)
+4. The program validates handshakes, cracks them with aircrack-ng, and saves results to `cracked_results/`
+
+### Manual file entry
+
+If no `.cap`/`.pcap` files are found in `handshakes/`, you can enter file paths manually:
+```
+Switch to manual file entry? (y/N): y
+Handshake 1 Path: /path/to/your/file.cap
+(Type 'done' or 'q' to finish adding files. Use TAB for auto-completion.)
+```
 
 ## Project Structure
 
@@ -59,10 +77,10 @@ python main.py
 handshakeCracker/
 ├── main.py              # Entry point
 ├── requirements.txt     # Python dependencies
-├── wifite.txt           # Auto-downloaded wordlist
+├── wifite.txt           # Auto-downloaded default wordlist
 ├── handshakes/          # Place .cap/.pcap files here
 ├── cracked_results/     # Cracked passwords saved here
-├── bin/                 # Auto-populated aircrack-ng + hashcat binaries
+├── bin/                 # Auto-populated aircrack-ng binaries
 ├── hc22000_cache/       # Temporary .hc22000 conversion cache
 └── src/
     ├── config.py        # URLs, paths, constants
@@ -70,7 +88,7 @@ handshakeCracker/
     ├── utils.py         # Download, extraction, utilities
     ├── validator.py     # Scapy handshake validation
     ├── gpu.py           # Discrete GPU detection
-    ├── cracker.py       # Aircrack-ng cracking (CPU fallback)
+    ├── cracker.py       # Aircrack-ng cracking (CPU)
     ├── hashcat_cracker.py  # Hashcat cracking + .cap → .hc22000 converter
     └── setup.py         # OS detection, auto-setup
 ```
