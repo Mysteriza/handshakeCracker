@@ -298,15 +298,17 @@ def warmup_hashcat_kernel(hc22000_path: str | None = None) -> bool:
         elapsed = time.time() - start
         log_debug(f"warmup_hashcat_kernel: finished in {elapsed:.2f}s (rc={proc.returncode})")
 
-        # Show a clean result summary
+        # Show a clean result summary — check actual kernel cache, not just rc
+        # (hashcat compiles kernel even when rc=1 / password not found)
         console.print("")
-        if proc.returncode == 0:
+        kernel_cached = _kernel_cache_exists(hc_dir)
+        if kernel_cached:
             colored_log("success", f"GPU kernel ready{' on ' + device_name if device_name else ''} ({int(elapsed)}s). Cached for next run.")
         else:
             colored_log("warning", "GPU kernel compilation skipped — will use hashcat with default kernels.")
 
         console.rule(style="yellow")
-        return proc.returncode == 0
+        return kernel_cached
 
     except Exception as e:
         log_debug(f"warmup_hashcat_kernel: failed ({e})")
