@@ -183,15 +183,15 @@ def ensure_python_dependencies() -> bool:
         """Install with --user first, fallback to --break-system-packages on PEP 668."""
         base_cmd = [sys.executable, "-m", "pip", "install", "--user", "-r", req_path]
         try:
-            subprocess.check_call(base_cmd, capture_output=True, text=True)
+            subprocess.run(base_cmd, check=True, capture_output=True, text=True)
             return True
         except subprocess.CalledProcessError as e:
             err = (e.stderr or "").lower()
             if "externally-managed" in err:
                 colored_log("warning", "PEP 668 detected — retrying with --break-system-packages...")
                 try:
-                    subprocess.check_call(base_cmd + ["--break-system-packages"],
-                                          capture_output=True, text=True)
+                    subprocess.run(base_cmd + ["--break-system-packages"],
+                                   check=True, capture_output=True, text=True)
                     return True
                 except subprocess.CalledProcessError:
                     return False

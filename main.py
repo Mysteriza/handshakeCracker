@@ -13,16 +13,16 @@ def _pip_install_requirements(req_path: str) -> bool:
     """Install pip packages with PEP 668 fallback."""
     base_cmd = [sys.executable, "-m", "pip", "install", "--user", "-r", req_path]
     try:
-        subprocess.check_call(base_cmd)
+        subprocess.run(base_cmd, check=True, capture_output=True, text=True)
         return True
     except subprocess.CalledProcessError as e:
-        stderr = (e.stderr or "").lower() if e.stderr else ""
-        stdout = (e.stdout or "").lower() if e.stdout else ""
+        stderr = (e.stderr or "").lower()
+        stdout = (e.stdout or "").lower()
         # PEP 668: externally-managed-environment
         if "externally-managed" in stderr or "externally-managed" in stdout:
             print("Detected PEP 668 (externally-managed environment). Retrying with --break-system-packages...")
             try:
-                subprocess.check_call(base_cmd + ["--break-system-packages"])
+                subprocess.run(base_cmd + ["--break-system-packages"], check=True, capture_output=True, text=True)
                 return True
             except subprocess.CalledProcessError:
                 return False
@@ -78,6 +78,70 @@ class PcapValidator(Validator):
                 message=f"Not a .cap or .pcap file: {text}",
                 cursor_position=len(text),
             )
+
+
+class WordlistValidator(Validator):
+    def validate(self, document):
+        text = document.text.strip().strip('"\'')
+        if not text:
+            raise ValidationError(message="Path cannot be empty.", cursor_position=0)
+        if not os.path.isfile(text):
+            raise ValidationError(
+                message=f"File not found: {text}", cursor_position=len(text)
+            )
+
+
+def choose_wordlist(session: PromptSession, default_path: str) -> str:
+    """Prompt user to pick default or custom wordlist. Returns chosen path."""
+    console.print("\n[bold cyan]Wordlist Selection[/bold cyan]")
+    console.print(f"  1. Use default wordlist ({os.path.basename(default_path)})")
+    console.print("  2. Use custom wordlist file")
+
+    while True:
+        choice = input("  Choose [1/2] (default: 1): ").strip()
+        if choice in ("", "1", "2"):
+            break
+        colored_log("error", "Invalid choice. Enter 1 for default or 2 for custom.")
+
+    if choice == "2":
+        console.print("  Example: C:\\Users\\You\\wordlist.txt  or  /home/user/wordlist.txt")
+        console.print("  Press TAB for auto-completion.")
+        while True:
+            try:
+                raw_path = session.prompt(
+                    "  Custom wordlist path: ",
+                    completer=PathCompleter(only_directories=False, expanduser=True),
+                    validator=WordlistValidator(),
+                    validate_while_typing=True,
+                ).strip()
+                custom_path = raw_path.strip('"\'')
+                break
+            except ValidationError as e:
+                colored_log("error", str(e))
+            except (EOFError, KeyboardInterrupt):
+                colored_log("warning", "Falling back to default wordlist.")
+                return default_path
+
+        # Count lines in custom wordlist
+        try:
+            with open(custom_path, 'rb') as f:
+                lines = sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
+            colored_log("info", f"Custom wordlist loaded: {lines:,} passwords.".replace(",", "."))
+        except OSError:
+            pass
+
+        return custom_path
+
+    # Default: count lines if available
+    if os.path.exists(default_path):
+        try:
+            with open(default_path, 'rb') as f:
+                lines = sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
+            colored_log("info", f"{lines:,} passwords loaded.".replace(",", "."))
+        except OSError:
+            pass
+
+    return default_path
 
 
 def get_manual_handshake_paths(session: PromptSession) -> list[str]:
@@ -149,6 +213,12 @@ def main():
             colored_log("info", f"{wordlist_lines:,} passwords loaded.".replace(",", "."))
 
         session = PromptSession(history=InMemoryHistory())
+
+        # ── Wordlist selection ─────────────────────────────────────────
+        default_wordlist = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME
+        )
+        wordlist_path = choose_wordlist(session, default_wordlist)
 
         found_files = scan_default_directory(HANDSHAKES_DIR)
         handshake_queue = []

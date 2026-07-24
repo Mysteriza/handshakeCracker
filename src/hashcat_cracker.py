@@ -354,17 +354,21 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
 
     # Get raw EAPOL bytes from M2 (trim to declared body length)
     eapol_raw_bytes = _extract_raw_eapol(m2_pkt)
+    if eapol_raw_bytes is None:
+        log_debug("convert_cap_to_hc22000: failed to extract raw EAPOL bytes from M2")
+        return False
+
     declared_len = 4 + m2_pkt[EAPOL].len
     if eapol_raw_bytes is not None and len(eapol_raw_bytes) > declared_len:
         log_debug(f"convert_cap_to_hc22000: trimming EAPOL from {len(eapol_raw_bytes)} to {declared_len} (body len {m2_pkt[EAPOL].len})")
         eapol_raw_bytes = eapol_raw_bytes[:declared_len]
 
     log_debug(f"convert_cap_to_hc22000: extracted ap_mac={ap_mac} sta_mac={sta_mac}")
-    log_debug(f"convert_cap_to_hc22000: anonce_len={len(anonce or '')} snonce_len={len(snonce or '')} mic_len={len(mic or '')} key_ver={key_ver}")
+log_debug(f"convert_cap_to_hc22000: anonce_len={len(anonce or '')} snonce_len={len(snonce or '')} mic_len={len(mic or '')} key_ver={key_ver}")
     log_debug(f"convert_cap_to_hc22000: eapol_raw_bytes_len={len(eapol_raw_bytes or b'')}")
 
-    if not all([ap_mac, sta_mac, anonce, snonce, mic, key_ver, eapol_raw_bytes]):
-        log_debug(f"convert_cap_to_hc22000: validation failed - missing fields: ap={bool(ap_mac)} sta={bool(sta_mac)} anonce={bool(anonce)} snonce={bool(snonce)} mic={bool(mic)} kv={bool(key_ver)} eapol={bool(eapol_raw_bytes)}")
+    if not all([ap_mac, sta_mac, anonce, snonce, mic, key_ver]):
+        log_debug(f"convert_cap_to_hc22000: validation failed - missing fields: ap={bool(ap_mac)} sta={bool(sta_mac)} anonce={bool(anonce)} snonce={bool(snonce)} mic={bool(mic)} kv={bool(key_ver)}")
         return False
 
     # Narrow types: after the all() guard above, these are guaranteed truthy
@@ -391,6 +395,9 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     eapol_hex = bytes(eapol_bytes).hex()
     log_debug(f"convert_cap_to_hc22000: zeroed MIC in EAPOL frame original_mic_start={orig_mic[:16]}...")
 
+    assert ap_mac is not None
+    assert sta_mac is not None
+    assert anonce is not None
     ap_mac_no_colon = ap_mac.replace(":", "")
     sta_mac_no_colon = sta_mac.replace(":", "")
 
@@ -519,6 +526,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         line_count = 0
         kernel_init_done = False
 
+        assert proc.stdout is not None
         for raw_line in proc.stdout:
             line = raw_line.rstrip()
             line_count += 1
