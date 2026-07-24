@@ -180,6 +180,7 @@ def ensure_python_dependencies() -> bool:
     colored_log("info", "Installing Python dependencies from requirements.txt...")
 
     def _pip_install(req_path: str) -> bool:
+        """Install with --user first, fallback to --break-system-packages on PEP 668."""
         base_cmd = [sys.executable, "-m", "pip", "install", "--user", "-r", req_path]
         try:
             subprocess.run(base_cmd, check=True, capture_output=True, text=True)
@@ -208,6 +209,27 @@ def ensure_python_dependencies() -> bool:
     return False
 
 
+def ensure_p7zip() -> bool:
+    """Ensure 7z is available on Linux for hashcat .7z extraction."""
+    if platform.system() != "Linux":
+        return True
+    try:
+        subprocess.run(["7z"], capture_output=True, check=False)
+        return True
+    except FileNotFoundError:
+        colored_log("info", "Installing p7zip-full for hashcat extraction...")
+        try:
+            subprocess.run(
+                ["sudo", "apt-get", "install", "-y", "p7zip-full"],
+                check=True, capture_output=True, text=True,
+            )
+            colored_log("success", "p7zip-full installed.")
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            colored_log("warning", "Could not install p7zip-full. Hashcat extraction may fail.")
+            return False
+
+
 def auto_setup() -> dict:
     """Run full auto-setup. Returns dict with availability flags."""
     show_banner()
@@ -218,13 +240,32 @@ def auto_setup() -> dict:
     dirs_ok = ensure_directories()
     wordlist_ok = ensure_wordlist()
 
-    if not aircrack_ok:
-        colored_log("error", "aircrack-ng is required but not available.")
+    # Hashcat setup (preferred over aircrack-ng when available)
+    ensure_p7zip()
+    try:
+        from src.hashcat_cracker import ensure_hashcat
+        hashcat_ok = ensure_hashcat()
+    except Exception as e:
+        log_debug(f"auto_setup: hashcat setup skipped ({e})")
+        hashcat_ok = False
+
+    # GPU detection (informational only — hashcat runs on integrated GPU too)
+    gpu_name: str | None = None
+    if hashcat_ok:
+        try:
+            from src.gpu import get_gpu_name
+            gpu_name = get_gpu_name()
+        except Exception as e:
+            log_debug(f"auto_setup: GPU detection skipped ({e})")
+
+    if not aircrack_ok and not hashcat_ok:
+        colored_log("error", "No cracking tool available (aircrack-ng or hashcat).")
         return {"aircrack_available": False, "hashcat_available": False}
 
     return {
         "aircrack_available": aircrack_ok,
-        "hashcat_available": False,
+        "hashcat_available": hashcat_ok,
+        "gpu_name": gpu_name,
         "directories_ready": dirs_ok,
         "wordlist_ready": wordlist_ok,
     }
