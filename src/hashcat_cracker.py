@@ -11,8 +11,8 @@ from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt
 from scapy.layers.eap import EAPOL, EAPOL_KEY
 
 from src.console import console, colored_log, log_error, log_debug
-from src.config import BIN_DIR, HASHCAT_VERSION, HASHCAT_URL, HCOV_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME
-from src.utils import download_with_progress
+from src.config import BIN_DIR, HASHCAT_VERSION, HASHCAT_URL, HCOV_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME, RESULTS_DIR
+from src.utils import download_with_progress, sanitize_ssid
 from src.validator import _classify_eapol
 
 
@@ -176,6 +176,7 @@ def warmup_hashcat_kernel() -> bool:
             cwd=hc_dir,
         )
 
+        assert proc.stdout is not None
         for line in proc.stdout:
             line_str = line.strip()
             if line_str and not line_str.startswith("WPA*02*"):
@@ -318,6 +319,10 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
 
     # Get raw EAPOL bytes from M2 (trim to declared body length)
     eapol_raw_bytes = _extract_raw_eapol(m2_pkt)
+    if eapol_raw_bytes is None:
+        log_debug("convert_cap_to_hc22000: failed to extract raw EAPOL bytes from M2")
+        return False
+
     declared_len = 4 + m2_pkt[EAPOL].len
     if len(eapol_raw_bytes) > declared_len:
         log_debug(f"convert_cap_to_hc22000: trimming EAPOL from {len(eapol_raw_bytes)} to {declared_len} (body len {m2_pkt[EAPOL].len})")
@@ -325,10 +330,10 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
 
     log_debug(f"convert_cap_to_hc22000: extracted ap_mac={ap_mac} sta_mac={sta_mac}")
     log_debug(f"convert_cap_to_hc22000: anonce_len={len(anonce) if anonce else 0} snonce_len={len(snonce) if snonce else 0} mic_len={len(mic) if mic else 0} key_ver={key_ver}")
-    log_debug(f"convert_cap_to_hc22000: eapol_raw_bytes_len={len(eapol_raw_bytes) if eapol_raw_bytes else 0}")
+    log_debug(f"convert_cap_to_hc22000: eapol_raw_bytes_len={len(eapol_raw_bytes)}")
 
-    if not all([ap_mac, sta_mac, anonce, snonce, mic, key_ver, eapol_raw_bytes]):
-        log_debug(f"convert_cap_to_hc22000: validation failed - missing fields: ap={bool(ap_mac)} sta={bool(sta_mac)} anonce={bool(anonce)} snonce={bool(snonce)} mic={bool(mic)} kv={bool(key_ver)} eapol={bool(eapol_raw_bytes)}")
+    if not all([ap_mac, sta_mac, anonce, snonce, mic, key_ver]):
+        log_debug(f"convert_cap_to_hc22000: validation failed - missing fields: ap={bool(ap_mac)} sta={bool(sta_mac)} anonce={bool(anonce)} snonce={bool(snonce)} mic={bool(mic)} kv={bool(key_ver)}")
         return False
 
     if not essid:
@@ -346,6 +351,9 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str) -> bool:
     eapol_hex = bytes(eapol_bytes).hex()
     log_debug(f"convert_cap_to_hc22000: zeroed MIC in EAPOL frame original_mic_start={orig_mic[:16]}...")
 
+    assert ap_mac is not None
+    assert sta_mac is not None
+    assert anonce is not None
     ap_mac_no_colon = ap_mac.replace(":", "")
     sta_mac_no_colon = sta_mac.replace(":", "")
 
@@ -485,6 +493,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         hashcat_output: list[str] = []
         line_count = 0
 
+        assert proc.stdout is not None
         for raw_line in proc.stdout:
             line = raw_line.rstrip()
             line_count += 1
