@@ -1,3 +1,5 @@
+"""Discrete GPU detection for hashcat routing."""
+
 import platform
 import subprocess
 
@@ -87,6 +89,7 @@ def _is_discrete(gpu: dict) -> bool:
 
 
 def has_discrete_gpu() -> bool:
+    """Return True if at least one discrete (non-integrated) GPU is present."""
     system = platform.system()
     log_debug(f"GPU detection: OS={system}")
     try:
@@ -122,6 +125,7 @@ def has_discrete_gpu() -> bool:
 
 
 def get_gpu_name() -> str | None:
+    """Return the name of the first discrete GPU, or None."""
     system = platform.system()
     try:
         if system == "Windows":

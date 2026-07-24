@@ -11,3 +11,4 @@ error_log_*.txt
 hashcat-*.zip
 hashcat-*.7z
 /kernels/
+AGENTS.md

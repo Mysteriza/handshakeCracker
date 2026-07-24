@@ -1,10 +1,4 @@
 # Wi-Fi Handshake Cracker
-# hashcat isn't working yet; it's been temporarily disabled, sorry
-
-> **⚠️ hashcat (GPU acceleration) is temporarily disabled**
-> The OpenCL runtime hangs on Windows with NVIDIA GPUs and we haven't found a reliable fix yet.
-> The program uses **aircrack-ng (CPU)** for all cracking — no GPU for now.
-> PRs or ideas to fix hashcat are welcome.
 
 Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Windows + Linux), fully automatic setup.
 
@@ -14,12 +8,16 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 ## Features
 
 - **Custom wordlist** — Choose between the default wordlist or your own `.txt` file at runtime
-- **Zero-config** — Auto-installs Python packages, downloads aircrack-ng, and fetches wordlist on first run
+- **GPU acceleration** — Hashcat (GPU) is the primary cracker; auto-falls back to aircrack-ng (CPU) only on failure
+- **Smart fallback** — If hashcat exhausts all passwords without a match, skips aircrack-ng instead of wasting time
+- **One-time kernel warmup** — First run compiles GPU kernels with live spinner (30-90s), cached for subsequent runs
+- **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches wordlist on first run
 - **Cross-platform** — Windows auto-downloads binaries; Linux auto-installs via apt-get
 - **EAPOL validation** — Scapy-based M1/M2/M3/M4 table rejects invalid captures before cracking
 - **Batch processing** — Queue multiple .cap/.pcap files from `handshakes/`
 - **Duplicate skip** — Skips networks already cracked in previous runs
 - **Dynamic parallelism** — CPU mode uses 50% of cores at BELOW_NORMAL priority
+- **Diagnostic logging** — Hashcat output logged to `hc22000_cache/hashcat_debug.log` for troubleshooting
 - **Error logging** — All errors written to timestamped `error_log_*.txt`
 - **Permission resilient** — Falls back to `%TEMP%` automatically if the project directory isn't writable
 
@@ -29,6 +27,11 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 |--------|--------|:------------:|:-------------:|
 | CPU (aircrack-ng) | 4-core laptop | ~2,000 | ~83 minutes |
 | CPU (aircrack-ng) | 16-core desktop | ~8,000 | ~21 minutes |
+| GPU (hashcat + GTX 1060) | Dedicated GPU | ~300,000 | ~33 seconds |
+| GPU (hashcat + RTX 3080) | Dedicated GPU | ~1,200,000 | ~8 seconds |
+
+> Hashcat uses **GPU** as the primary cracker. Aircrack-ng (CPU) is the fallback only if hashcat
+> is unavailable or crashes during execution.
 
 ## Prerequisites
 
@@ -60,7 +63,7 @@ The program auto-installs all dependencies on first run. No manual setup require
    ```
    - **Option 1** — Uses the auto-downloaded default wordlist
    - **Option 2** — Enter a path to your own wordlist file (TAB completion supported)
-4. The program validates handshakes, cracks them with aircrack-ng, and saves results to `cracked_results/`
+4. The program validates handshakes, cracks them **(GPU via hashcat by default, CPU via aircrack-ng only if hashcat fails)**, and saves results to `cracked_results/`
 
 ### Manual file entry
 
@@ -80,17 +83,17 @@ handshakeCracker/
 ├── wifite.txt           # Auto-downloaded default wordlist
 ├── handshakes/          # Place .cap/.pcap files here
 ├── cracked_results/     # Cracked passwords saved here
-├── bin/                 # Auto-populated aircrack-ng binaries
-├── hc22000_cache/       # Temporary .hc22000 conversion cache
+├── bin/                 # Auto-populated aircrack-ng & hashcat binaries
+├── hc22000_cache/       # Temporary .hc22000 conversion cache + hashcat potfile
 └── src/
     ├── config.py        # URLs, paths, constants
     ├── console.py       # Terminal helpers + error logging
-    ├── utils.py         # Download, extraction, utilities
-    ├── validator.py     # Scapy handshake validation
-    ├── gpu.py           # Discrete GPU detection
-    ├── cracker.py       # Aircrack-ng cracking (CPU)
+    ├── gpu.py           # GPU detection (informational)
+    ├── utils.py          # Download, extraction, utilities
+    ├── validator.py      # Scapy handshake validation
+    ├── cracker.py        # Aircrack-ng cracking (CPU)
     ├── hashcat_cracker.py  # Hashcat cracking + .cap → .hc22000 converter
-    └── setup.py         # OS detection, auto-setup
+    └── setup.py          # OS detection, auto-setup
 ```
 
 ## Legal

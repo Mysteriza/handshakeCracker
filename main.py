@@ -55,10 +55,11 @@ from prompt_toolkit.history import InMemoryHistory
 
 from src.console import console, colored_log, log_error, log_debug
 from src.config import HANDSHAKES_DIR, WORDLIST_NAME
-from src.utils import sanitize_ssid, scan_default_directory
+from src.utils import sanitize_ssid, scan_default_directory, count_wordlist_lines
 from src.validator import validate_all_handshakes
 from src.cracker import get_already_cracked_essids, crack_handshake
-from src.hashcat_cracker import hashcat_crack_handshake
+from src.hashcat_cracker import hashcat_crack_handshake, HASHCAT_EXHAUSTED
+from src.gpu import has_discrete_gpu
 from src.setup import auto_setup
 
 
@@ -122,24 +123,16 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
                 colored_log("warning", "Falling back to default wordlist.")
                 return default_path
 
-        # Count lines in custom wordlist
-        try:
-            with open(custom_path, 'rb') as f:
-                lines = sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
+        lines = count_wordlist_lines(custom_path)
+        if lines:
             colored_log("info", f"Custom wordlist loaded: {lines:,} passwords.".replace(",", "."))
-        except OSError:
-            pass
 
         return custom_path
 
     # Default: count lines if available
-    if os.path.exists(default_path):
-        try:
-            with open(default_path, 'rb') as f:
-                lines = sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
-            colored_log("info", f"{lines:,} passwords loaded.".replace(",", "."))
-        except OSError:
-            pass
+    lines = count_wordlist_lines(default_path)
+    if lines:
+        colored_log("info", f"{lines:,} passwords loaded.".replace(",", "."))
 
     return default_path
 
@@ -200,8 +193,20 @@ def main():
         if not setup.get("aircrack_available") and not setup.get("hashcat_available"):
             sys.exit(1)
 
-        use_hashcat = False
-        log_debug(f"main: hashcat disabled, using aircrack-ng")
+        use_hashcat = setup.get("hashcat_available", False)
+        gpu_name = setup.get("gpu_name")
+
+        if use_hashcat and gpu_name:
+            gpu_type = "Discrete" if has_discrete_gpu() else "Integrated"
+            colored_log("info", f"GPU detected: {gpu_name} ({gpu_type}) — using hashcat (GPU).")
+        elif use_hashcat:
+            colored_log("info", "Using hashcat (GPU/OpenCL).")
+        else:
+            colored_log("info", "Using aircrack-ng (CPU).")
+
+        log_debug(f"main: hashcat={'yes' if use_hashcat else 'no'}, "
+                  f"gpu_name={gpu_name}, "
+                  f"aircrack-ng={'yes' if setup.get('aircrack_available') else 'no'}")
 
         session = PromptSession(history=InMemoryHistory())
 
@@ -226,10 +231,7 @@ def main():
                 sys.exit(0)
         else:
             handshake_queue.extend(found_files)
-            console.print(
-                f"Found {len(found_files)} .cap/.pcap files "
-                f"in '{HANDSHAKES_DIR}'."
-            )
+            colored_log("info", f"Found {len(found_files)} .cap/.pcap file(s) in '{HANDSHAKES_DIR}'.")
 
         if not handshake_queue:
             colored_log("warning", "No handshake files to process. Exiting.")
@@ -293,6 +295,9 @@ def main():
                         handshake_path, wordlist_path, base_essid
                     )
                     log_debug(f"main: aircrack-ng returned {cracked!r}")
+                elif cracked is HASHCAT_EXHAUSTED:
+                    cracked = None  # normalize for display logic below
+                    colored_log("warning", "Password not found in wordlist. Try a larger wordlist.")
             else:
                 log_debug(f"main: routing to aircrack-ng for {base_essid}")
                 cracked = crack_handshake(
@@ -301,9 +306,9 @@ def main():
                 log_debug(f"main: aircrack-ng returned {cracked!r}")
 
             if cracked:
-                console.print(f"  Done.")
+                console.print(f"  [green]Done.[/green]")
             else:
-                console.print(f"  Failed.")
+                console.print(f"  [red]Failed.[/red]")
 
         console.print(f"\n{SEPARATOR}")
         console.print("All handshakes have been processed!")
