@@ -18,7 +18,7 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 - **Duplicate skip** — Skips networks already cracked in previous runs
 - **Dynamic parallelism** — CPU mode uses 50% of cores at BELOW_NORMAL priority
 - **Diagnostic logging** — Hashcat output logged to `hc22000_cache/hashcat_debug.log` for troubleshooting
-- **Error logging** — All errors written to timestamped `error_log_*.txt`
+- **Debug logging** — Detailed logs written to `debug_log.txt`
 - **Permission resilient** — Falls back to `%TEMP%` automatically if the project directory isn't writable
 
 ## Performance

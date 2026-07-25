@@ -2,8 +2,8 @@
 """Wi-Fi Handshake Cracker — fully automated setup & cracking."""
 import os
 import sys
-import time
 import subprocess
+import signal
 
 # ── Phase 1: Auto-install Python dependencies ──────────────────────────
 _REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements.txt")
@@ -41,151 +41,43 @@ except ImportError:
         print("Libraries installed successfully. Please restart the program.")
         sys.exit(0)
     else:
-        print(f"Failed to install required libraries.")
+        print("Failed to install required libraries.")
         print(f"Try manually: pip install --user -r {_REQUIREMENTS}")
         print(f"Or with override: pip install --break-system-packages -r {_REQUIREMENTS}")
         sys.exit(1)
 
 # ── Phase 2: Project imports ───────────────────────────────────────────
-from prompt_toolkit.completion import PathCompleter
 from prompt_toolkit.validation import Validator, ValidationError
 from prompt_toolkit.shortcuts import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
 from src.console import console, colored_log, log_error, log_debug
 from src.config import HANDSHAKES_DIR, WORDLIST_NAME
-from src.utils import sanitize_ssid, scan_default_directory, count_wordlist_lines
+from src.utils import (
+    choose_wordlist, scan_default_directory, get_manual_handshake_paths,
+    sanitize_ssid
+)
 from src.validator import validate_all_handshakes
-from src.cracker import get_already_cracked_essids, crack_handshake
-from src.hashcat_cracker import hashcat_crack_handshake, HASHCAT_EXHAUSTED
-from src.gpu import has_discrete_gpu
+from src.cracker import get_already_cracked_essids, AircrackBackend
+from src.hashcat import HashcatBackend
 from src.setup import auto_setup
+from src.backend import CrackerBackend
 
 
-
-
-class PcapValidator(Validator):
-    def validate(self, document):
-        text = document.text
-        if text.lower() in ("q", "done"):
-            return
-        if not os.path.exists(text):
-            raise ValidationError(
-                message=f"File not found: {text}", cursor_position=len(text)
-            )
-        if not (text.lower().endswith(".cap") or text.lower().endswith(".pcap")):
-            raise ValidationError(
-                message=f"Not a .cap or .pcap file: {text}",
-                cursor_position=len(text),
-            )
-
-
-class WordlistValidator(Validator):
-    def validate(self, document):
-        text = document.text.strip().strip('"\'')
-        if not text:
-            raise ValidationError(message="Path cannot be empty.", cursor_position=0)
-        if not os.path.isfile(text):
-            raise ValidationError(
-                message=f"File not found: {text}", cursor_position=len(text)
-            )
-
-
-def choose_wordlist(session: PromptSession, default_path: str) -> str:
-    """Prompt user to pick default or custom wordlist. Returns chosen path."""
-    console.print("\n[bold cyan]Wordlist Selection[/bold cyan]")
-    console.print(f"  1. Use default wordlist ({os.path.basename(default_path)})")
-    console.print("  2. Use custom wordlist file")
-
-    while True:
-        choice = input("  Choose [1/2] (default: 1): ").strip()
-        if choice in ("", "1", "2"):
-            break
-        colored_log("error", "Invalid choice. Enter 1 for default or 2 for custom.")
-
-    if choice == "2":
-        console.print("  Example: C:\\Users\\You\\wordlist.txt  or  /home/user/wordlist.txt")
-        console.print("  Press TAB for auto-completion.")
-        while True:
-            try:
-                raw_path = session.prompt(
-                    "  Custom wordlist path: ",
-                    completer=PathCompleter(only_directories=False, expanduser=True),
-                    validator=WordlistValidator(),
-                    validate_while_typing=True,
-                ).strip()
-                custom_path = raw_path.strip('"\'')
-                break
-            except ValidationError as e:
-                colored_log("error", str(e))
-            except (EOFError, KeyboardInterrupt):
-                colored_log("warning", "Falling back to default wordlist.")
-                return default_path
-
-        lines = count_wordlist_lines(custom_path)
-        if lines:
-            colored_log("info", f"Custom wordlist loaded: {lines:,} passwords.".replace(",", "."))
-
-        return custom_path
-
-    # Default: count lines if available
-    lines = count_wordlist_lines(default_path)
-    if lines:
-        colored_log("info", f"{lines:,} passwords loaded.".replace(",", "."))
-
-    return default_path
-
-
-def get_manual_handshake_paths(session: PromptSession) -> list[str]:
-    manual_queue = []
-    console.print("\nPlease enter handshake file paths (.cap/.pcap) one by one.")
-    console.print(
-        "(Type 'done' or 'q' to finish adding files. "
-        "Use TAB for auto-completion.)"
-    )
-
-    while True:
-        try:
-            current_input_path = (
-                session.prompt(
-                    f"Handshake {len(manual_queue) + 1} Path: ",
-                    completer=PathCompleter(only_directories=False, expanduser=True),
-                    validator=PcapValidator(),
-                    validate_while_typing=True,
-                )
-                .strip()
-            )
-
-            if current_input_path.lower() in ("done", "q"):
-                break
-
-            manual_queue.append(current_input_path)
-            colored_log(
-                "info",
-                f"Added: {os.path.basename(current_input_path)} to queue.",
-            )
-
-        except ValidationError as e:
-            colored_log("error", str(e))
-        except EOFError:
-            colored_log("info", "Exiting program.")
-            sys.exit(0)
-        except Exception as e:
-            log_error("Error during manual handshake file input.", e)
-            colored_log(
-                "error",
-                "An error occurred during file path input. "
-                "Please try again or restart.",
-            )
-            time.sleep(1)
-
-    return manual_queue
 
 
 SEPARATOR = "-" * 60
 
 def main():
-    subprocess.run("cls" if os.name == "nt" else "clear", shell=True)
+    try:
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    except AttributeError:
+        pass
+
+    try:
+        subprocess.run("cls" if os.name == "nt" else "clear", shell=True)
+    except Exception:
+        pass
 
     try:
         setup = auto_setup()
@@ -196,7 +88,7 @@ def main():
         gpu_name = setup.get("gpu_name")
 
         if use_hashcat and gpu_name:
-            gpu_type = "Discrete" if has_discrete_gpu() else "Integrated"
+            gpu_type = "Discrete" if setup.get("gpu_is_discrete") else "Integrated"
             colored_log("info", f"GPU detected: {gpu_name} ({gpu_type}) — using hashcat (GPU).")
         elif use_hashcat:
             colored_log("info", "Using hashcat (GPU/OpenCL).")
@@ -236,13 +128,13 @@ def main():
             colored_log("warning", "No handshake files to process. Exiting.")
             sys.exit(0)
 
-        valid_files, _ = validate_all_handshakes(handshake_queue)
+        valid_files_map, _ = validate_all_handshakes(handshake_queue)
 
-        if not valid_files:
+        if not valid_files_map:
             colored_log("warning", "No valid handshake files to process. Exiting.")
             sys.exit(0)
 
-        handshake_queue = valid_files
+        handshake_queue = list(valid_files_map.keys())
         console.print(
             f"Processing {len(handshake_queue)} valid handshake(s)..."
         )
@@ -272,6 +164,13 @@ def main():
                 f"network(s). Processing {len(deduped)} remaining."
             )
 
+        backend: CrackerBackend
+        if use_hashcat:
+            packets_map = {f: v.relevant_packets for f, v in valid_files_map.items()}
+            backend = HashcatBackend(setup.get("gpu_is_discrete", False), packets_map)
+        else:
+            backend = AircrackBackend()
+
         for idx, handshake_path in enumerate(deduped, 1):
             base_essid = os.path.basename(handshake_path).replace(
                 ".cap", ""
@@ -280,34 +179,23 @@ def main():
             console.print(f"\n{SEPARATOR}")
             console.print(f"Handshake {idx}/{len(deduped)}: {base_essid}")
 
-            if use_hashcat:
-                log_debug(f"main: routing to hashcat for {base_essid}")
-                cracked = hashcat_crack_handshake(
-                    handshake_path, wordlist_path, base_essid
-                )
-                log_debug(f"main: hashcat returned {cracked!r}")
+            log_debug(f"main: routing to {backend.__class__.__name__} for {base_essid}")
+            cracked = backend.crack(handshake_path, wordlist_path, base_essid)
+            log_debug(f"main: backend returned {cracked!r}")
 
-                if cracked is None:
-                    colored_log("warning", "Hashcat failed — falling back to aircrack-ng.")
-                    log_debug(f"main: falling back to aircrack-ng for {base_essid}")
-                    cracked = crack_handshake(
-                        handshake_path, wordlist_path, base_essid
-                    )
-                    log_debug(f"main: aircrack-ng returned {cracked!r}")
-                elif cracked is HASHCAT_EXHAUSTED:
-                    cracked = None  # normalize for display logic below
-                    colored_log("warning", "Password not found in wordlist. Try a larger wordlist.")
-            else:
-                log_debug(f"main: routing to aircrack-ng for {base_essid}")
-                cracked = crack_handshake(
-                    handshake_path, wordlist_path, base_essid
-                )
-                log_debug(f"main: aircrack-ng returned {cracked!r}")
+            if cracked == "HASHCAT_EXHAUSTED":
+                console.print("\n[yellow]Hashcat exhausted wordlist without finding password.[/yellow]")
+                console.print("[info]Fallback to aircrack-ng...[/info]")
+                log_debug("main: hashcat exhausted, fallback to AircrackBackend")
+
+                fallback = AircrackBackend()
+                cracked = fallback.crack(handshake_path, wordlist_path, base_essid)
+                log_debug(f"main: fallback aircrack-ng returned {cracked!r}")
 
             if cracked:
-                console.print(f"  [green]Done.[/green]")
+                console.print("  [green]Done.[/green]")
             else:
-                console.print(f"  [red]Failed.[/red]")
+                console.print("  [red]Failed.[/red]")
 
         console.print(f"\n{SEPARATOR}")
         console.print("All handshakes have been processed!")
@@ -320,7 +208,7 @@ def main():
         log_error("A critical unhandled error occurred in main execution.", e)
         colored_log(
             "error",
-            "A critical error occurred. Check 'error_log.txt' for details. Exiting.",
+            "A critical error occurred. Check 'debug_log.txt' for details. Exiting.",
         )
         sys.exit(1)
 
