@@ -11,4 +11,4 @@ AGENTS.md
 *.commit_hash
 hashcat-*.zip
 hashcat-*.7z
-/kernels/
+/kernels//logs/

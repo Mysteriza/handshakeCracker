@@ -41,19 +41,41 @@ _logger.setLevel(logging.DEBUG)
 
 
 def _get_log_dir() -> str:
-    base = os.getcwd()
+    base = os.path.join(os.getcwd(), "logs")
     try:
-        test_path = os.path.join(base, "debug_log.txt")
-        with open(test_path, "a"):
-            pass
+        os.makedirs(base, exist_ok=True)
+        test_path = os.path.join(base, ".write_test")
+        with open(test_path, "w") as f:
+            f.write("test")
+        os.remove(test_path)
         return base
     except (OSError, PermissionError):
-        return tempfile.gettempdir()
+        temp_dir = os.path.join(tempfile.gettempdir(), "handshakeCracker_logs")
+        os.makedirs(temp_dir, exist_ok=True)
+        return temp_dir
+
+
+def _cleanup_old_logs(log_dir: str, max_logs: int = 10):
+    """Keep only the latest `max_logs` debug_log files in `log_dir`."""
+    try:
+        import glob
+        logs = glob.glob(os.path.join(log_dir, "debug_log_*.txt"))
+        logs.sort(key=os.path.getmtime, reverse=True)
+        # Delete logs that exceed the maximum minus one (since we are about to create a new one)
+        for old_log in logs[max_logs - 1:]:
+            try:
+                os.remove(old_log)
+            except OSError:
+                pass
+    except Exception:
+        pass
 
 
 from datetime import datetime
 
-_log_file = os.path.join(_get_log_dir(), f"debug_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+_log_dir = _get_log_dir()
+_cleanup_old_logs(_log_dir, max_logs=10)
+_log_file = os.path.join(_log_dir, f"debug_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
 
 _handler = logging.FileHandler(_log_file, encoding='utf-8')
 _formatter = logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s", "%Y-%m-%d %H:%M:%S")

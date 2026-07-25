@@ -140,27 +140,23 @@ def main():
         )
 
         already_cracked = get_already_cracked_essids()
-        handshake_queue = [
-            p for p in handshake_queue
-            if sanitize_ssid(os.path.basename(p).replace(
-                ".cap", "").replace(".pcap", "")) not in already_cracked
-        ]
-
         handshake_queue.sort(key=lambda p: os.path.getsize(p), reverse=True)
 
-        seen = set(already_cracked)
+        seen = set()
         deduped = []
+        skipped_count = 0
+
         for p in handshake_queue:
-            safe = sanitize_ssid(os.path.basename(p).replace(
-                ".cap", "").replace(".pcap", ""))
-            if safe not in seen:
+            safe = sanitize_ssid(strip_capture_extension(p))
+            if safe in already_cracked or safe in seen:
+                skipped_count += 1
+            else:
                 seen.add(safe)
                 deduped.append(p)
 
-        skipped_count = len(handshake_queue) - len(deduped)
         if skipped_count:
             console.print(
-                f"Skipped {skipped_count} previously cracked "
+                f"Skipped {skipped_count} previously cracked or duplicate "
                 f"network(s). Processing {len(deduped)} remaining."
             )
 
