@@ -47,7 +47,6 @@ except ImportError:
         sys.exit(1)
 
 # ── Phase 2: Project imports ───────────────────────────────────────────
-from rich.console import Console
 from prompt_toolkit.completion import PathCompleter
 from prompt_toolkit.validation import Validator, ValidationError
 from prompt_toolkit.shortcuts import PromptSession
@@ -186,7 +185,7 @@ def get_manual_handshake_paths(session: PromptSession) -> list[str]:
 SEPARATOR = "-" * 60
 
 def main():
-    os.system("cls" if os.name == "nt" else "clear")
+    subprocess.run("cls" if os.name == "nt" else "clear", shell=True)
 
     try:
         setup = auto_setup()
@@ -237,7 +236,7 @@ def main():
             colored_log("warning", "No handshake files to process. Exiting.")
             sys.exit(0)
 
-        valid_files, invalid_files = validate_all_handshakes(handshake_queue)
+        valid_files, _ = validate_all_handshakes(handshake_queue)
 
         if not valid_files:
             colored_log("warning", "No valid handshake files to process. Exiting.")
