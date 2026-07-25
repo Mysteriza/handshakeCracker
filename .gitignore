@@ -7,6 +7,7 @@ __pycache__/
 /bin/
 error_log_*.txt
 /hc22000_cache/
+AGENTS.md
 *.commit_hash
 hashcat-*.zip
 hashcat-*.7z
