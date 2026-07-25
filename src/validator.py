@@ -1,7 +1,9 @@
 import os
+from dataclasses import dataclass
 
 from src.console import console
-from scapy.all import rdpcap
+from scapy.all import PcapReader
+from scapy.layers.dot11 import Dot11Beacon, Dot11ProbeResp
 from scapy.layers.eap import EAPOL_KEY
 
 CHECK = "OK"
@@ -24,34 +26,41 @@ def _classify_eapol(ek) -> str | None:
     return None
 
 
-def validate_handshake(filepath: str) -> dict:
-    result = {
-        "is_valid": False,
-        "has_m1": False, "has_m2": False,
-        "has_m3": False, "has_m4": False,
-        "error": None,
-    }
+@dataclass
+class ValidationResult:
+    is_valid: bool = False
+    has_m1: bool = False
+    has_m2: bool = False
+    has_m3: bool = False
+    has_m4: bool = False
+    error: str | None = None
+    relevant_packets: list = None
+
+def validate_handshake(filepath: str) -> ValidationResult:
+    result = ValidationResult()
+    result.relevant_packets = []
     try:
-        packets = rdpcap(filepath)
+        with PcapReader(filepath) as pcap:
+            for pkt in pcap:
+                if pkt.haslayer(EAPOL_KEY):
+                    result.relevant_packets.append(pkt)
+                    ek = pkt[EAPOL_KEY]
+                    msg_type = _classify_eapol(ek)
+                    if msg_type == "M1":
+                        result.has_m1 = True
+                    elif msg_type == "M2":
+                        result.has_m2 = True
+                    elif msg_type == "M3":
+                        result.has_m3 = True
+                    elif msg_type == "M4":
+                        result.has_m4 = True
+                elif pkt.haslayer(Dot11Beacon) or pkt.haslayer(Dot11ProbeResp):
+                    result.relevant_packets.append(pkt)
     except Exception as e:
-        result["error"] = f"cannot read pcap: {e}"
+        result.error = f"cannot read pcap: {e}"
         return result
 
-    for pkt in packets:
-        if not pkt.haslayer(EAPOL_KEY):
-            continue
-        ek = pkt[EAPOL_KEY]
-        msg_type = _classify_eapol(ek)
-        if msg_type == "M1":
-            result["has_m1"] = True
-        elif msg_type == "M2":
-            result["has_m2"] = True
-        elif msg_type == "M3":
-            result["has_m3"] = True
-        elif msg_type == "M4":
-            result["has_m4"] = True
-
-    result["is_valid"] = result["has_m1"] and result["has_m2"]
+    result.is_valid = result.has_m1 and result.has_m2
     return result
 
 
@@ -69,7 +78,9 @@ def _row(cells: list[str], widths: list[int]) -> str:
     return "".join(parts)
 
 
-def validate_all_handshakes(file_list: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
+def validate_all_handshakes(file_list: list[str]) -> tuple[dict[str, ValidationResult], list[tuple[str, str]]]:
+    if not file_list:
+        return {}, []
     console.print("\nValidating handshake files... (M1 + M2 is sufficient for validity)")
 
     results = []
@@ -84,25 +95,25 @@ def validate_all_handshakes(file_list: list[str]) -> tuple[list[str], list[tuple
 
     header = ["File", "M1", "M2", "M3", "M4", "Status"]
     rows = []
-    valid = []
+    valid = {}
     invalid = []
 
     for f, v in results:
         basename = os.path.basename(f)
-        if v["error"]:
+        if v.error:
             cells = [basename, CROSS, CROSS, CROSS, CROSS, "ERROR"]
-            invalid.append((f, v["error"]))
+            invalid.append((f, v.error))
         else:
             cells = [
                 basename,
-                CHECK if v["has_m1"] else CROSS,
-                CHECK if v["has_m2"] else CROSS,
-                CHECK if v["has_m3"] else CROSS,
-                CHECK if v["has_m4"] else CROSS,
-                "VALID" if v["is_valid"] else "INVALID",
+                CHECK if v.has_m1 else CROSS,
+                CHECK if v.has_m2 else CROSS,
+                CHECK if v.has_m3 else CROSS,
+                CHECK if v.has_m4 else CROSS,
+                "VALID" if v.is_valid else "INVALID",
             ]
-            if v["is_valid"]:
-                valid.append(f)
+            if v.is_valid:
+                valid[f] = v
             else:
                 invalid.append((f, "missing M1 or M2"))
         rows.append(cells)

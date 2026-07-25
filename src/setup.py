@@ -1,17 +1,17 @@
 import os
 import platform
 import subprocess
-import sys
 
 from rich.panel import Panel
 from rich.text import Text
 
-from src.console import console, colored_log, log_error
+from src.console import console, colored_log, log_error, log_debug
 from src.config import (
     HANDSHAKES_DIR, RESULTS_DIR, WORDLIST_NAME, WORDLIST_URL,
-    AIRCRACK_WIN_URL, BIN_DIR, DEPS_DIR, AIRCRACK_ZIP_NAME,
+    AIRCRACK_WIN_URL, BIN_DIR, DEPS_DIR, AIRCRACK_ZIP_NAME, AIRCRACK_WIN_SHA256
 )
 from src.utils import download_wordlist, download_and_extract_zip, extract_local_zip
+from src.bootstrap import pip_install_requirements
 
 
 def _find_exe_in_path(exe: str) -> str | None:
@@ -22,11 +22,18 @@ def _find_exe_in_path(exe: str) -> str | None:
     return None
 
 
+_aircrack_path_cache = None
+
 def _find_aircrack_anywhere() -> str | None:
+    global _aircrack_path_cache
+    if _aircrack_path_cache:
+        return _aircrack_path_cache
+
     system = platform.system()
     exe = "aircrack-ng.exe" if system == "Windows" else "aircrack-ng"
     found = _find_exe_in_path(exe)
     if found:
+        _aircrack_path_cache = found
         return found
 
     root = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +52,7 @@ def _find_aircrack_anywhere() -> str | None:
     for p in local_paths:
         resolved = os.path.abspath(p)
         if os.path.isfile(resolved):
+            _aircrack_path_cache = resolved
             return resolved
     return None
 
@@ -77,7 +85,7 @@ def ensure_aircrack() -> bool:
                         return True
                 colored_log("warning", "Local ZIP extraction failed — trying download.")
 
-            if download_and_extract_zip(AIRCRACK_WIN_URL, bin_path, "aircrack-ng-1.7-win/bin"):
+            if download_and_extract_zip(AIRCRACK_WIN_URL, bin_path, "aircrack-ng-1.7-win/bin", AIRCRACK_WIN_SHA256):
                 found = _find_aircrack_anywhere()
                 if found:
                     _add_parent_to_path(found)
@@ -86,21 +94,35 @@ def ensure_aircrack() -> bool:
             return False
 
         elif system == "Linux":
-            colored_log("info", "Installing aircrack-ng via apt-get...")
+            has_apt = _find_exe_in_path("apt-get") is not None
+            has_pacman = _find_exe_in_path("pacman") is not None
+
+            if has_apt:
+                cmd = ["sudo", "apt-get", "install", "-y", "aircrack-ng"]
+            elif has_pacman:
+                cmd = ["sudo", "pacman", "-S", "--noconfirm", "aircrack-ng"]
+            else:
+                colored_log("error", "Unsupported package manager. Install manually: aircrack-ng")
+                return False
+
+            colored_log("info", f"Installing aircrack-ng: {' '.join(cmd)}")
             try:
                 subprocess.run(
-                    ["sudo", "apt-get", "install", "-y", "aircrack-ng"],
-                    check=True, capture_output=True, text=True,
+                    cmd,
+                    check=True, capture_output=True, text=True, timeout=120
                 )
                 colored_log("success", "aircrack-ng installed.")
                 found = _find_aircrack_anywhere()
                 if found:
                     _add_parent_to_path(found)
                     return True
+            except subprocess.TimeoutExpired:
+                colored_log("error", f"Instalasi butuh sudo password, jalankan manual: {' '.join(cmd)}")
+                return False
             except (subprocess.CalledProcessError, FileNotFoundError):
                 pass
             colored_log("error", "Could not install aircrack-ng automatically.")
-            colored_log("info", "Install manually: sudo apt-get install aircrack-ng")
+            colored_log("info", f"Install manually: {' '.join(cmd)}")
             return False
 
         else:
@@ -126,18 +148,17 @@ def show_banner():
 
 
 def ensure_directories() -> bool:
-    try:
-        os.makedirs(RESULTS_DIR, exist_ok=True)
-    except (OSError, PermissionError):
-        colored_log("error", f"Cannot create results directory: {RESULTS_DIR}")
-        return False
-
-    if not os.path.exists(HANDSHAKES_DIR):
+    from src.config import BIN_DIR, HCOV_DIR
+    for directory in [RESULTS_DIR, HANDSHAKES_DIR, BIN_DIR, HCOV_DIR]:
         try:
-            os.makedirs(HANDSHAKES_DIR)
+            os.makedirs(directory, exist_ok=True)
         except (OSError, PermissionError):
-            colored_log("warning", f"Cannot create '{HANDSHAKES_DIR}' dir.")
-            return True
+            if directory == RESULTS_DIR:
+                colored_log("error", f"Cannot create results directory: {RESULTS_DIR}")
+                return False
+            else:
+                colored_log("warning", f"Cannot create directory: {directory}")
+
 
     has_cap = any(
         f.lower().endswith(('.cap', '.pcap'))
@@ -170,36 +191,16 @@ def ensure_python_dependencies() -> bool:
         return True
 
     try:
-        import rich
-        import prompt_toolkit
-        import scapy
+        import rich  # noqa: F401
+        import prompt_toolkit  # noqa: F401
+        import scapy  # noqa: F401
         return True
     except ImportError:
         pass
 
     colored_log("info", "Installing Python dependencies from requirements.txt...")
 
-    def _pip_install(req_path: str) -> bool:
-        """Install with --user first, fallback to --break-system-packages on PEP 668."""
-        base_cmd = [sys.executable, "-m", "pip", "install", "--user", "-r", req_path]
-        try:
-            subprocess.run(base_cmd, check=True, capture_output=True, text=True)
-            return True
-        except subprocess.CalledProcessError as e:
-            err = (e.stderr or "").lower()
-            if "externally-managed" in err:
-                colored_log("warning", "PEP 668 detected — retrying with --break-system-packages...")
-                try:
-                    subprocess.run(base_cmd + ["--break-system-packages"],
-                                   check=True, capture_output=True, text=True)
-                    return True
-                except subprocess.CalledProcessError:
-                    return False
-            return False
-        except Exception:
-            return False
-
-    if _pip_install(req_path):
+    if pip_install_requirements(req_path):
         colored_log("success", "Python dependencies installed.")
         return True
 
@@ -217,16 +218,30 @@ def ensure_p7zip() -> bool:
         subprocess.run(["7z"], capture_output=True, check=False)
         return True
     except FileNotFoundError:
-        colored_log("info", "Installing p7zip-full for hashcat extraction...")
+        has_apt = _find_exe_in_path("apt-get") is not None
+        has_pacman = _find_exe_in_path("pacman") is not None
+
+        if has_apt:
+            cmd = ["sudo", "apt-get", "install", "-y", "p7zip-full"]
+        elif has_pacman:
+            cmd = ["sudo", "pacman", "-S", "--noconfirm", "p7zip"]
+        else:
+            colored_log("error", "Unsupported package manager. Install manually: p7zip")
+            return False
+
+        colored_log("info", f"Installing p7zip: {' '.join(cmd)}")
         try:
             subprocess.run(
-                ["sudo", "apt-get", "install", "-y", "p7zip-full"],
-                check=True, capture_output=True, text=True,
+                cmd,
+                check=True, capture_output=True, text=True, timeout=120
             )
-            colored_log("success", "p7zip-full installed.")
+            colored_log("success", "p7zip installed.")
             return True
+        except subprocess.TimeoutExpired:
+            colored_log("error", f"Instalasi butuh sudo password, jalankan manual: {' '.join(cmd)}")
+            return False
         except (subprocess.CalledProcessError, FileNotFoundError):
-            colored_log("warning", "Could not install p7zip-full. Hashcat extraction may fail.")
+            colored_log("warning", "Could not install p7zip. Hashcat extraction may fail.")
             return False
 
 
@@ -243,18 +258,19 @@ def auto_setup() -> dict:
     # Hashcat setup (preferred over aircrack-ng when available)
     ensure_p7zip()
     try:
-        from src.hashcat_cracker import ensure_hashcat
+        from src.hashcat import ensure_hashcat
         hashcat_ok = ensure_hashcat()
     except Exception as e:
         log_debug(f"auto_setup: hashcat setup skipped ({e})")
         hashcat_ok = False
 
-    # GPU detection (informational only — hashcat runs on integrated GPU too)
+    # GPU detection
     gpu_name: str | None = None
+    gpu_is_discrete = False
     if hashcat_ok:
         try:
-            from src.gpu import get_gpu_name
-            gpu_name = get_gpu_name()
+            from src.gpu import detect_gpu
+            gpu_name, gpu_is_discrete = detect_gpu()
         except Exception as e:
             log_debug(f"auto_setup: GPU detection skipped ({e})")
 
@@ -266,6 +282,7 @@ def auto_setup() -> dict:
         "aircrack_available": aircrack_ok,
         "hashcat_available": hashcat_ok,
         "gpu_name": gpu_name,
+        "gpu_is_discrete": gpu_is_discrete,
         "directories_ready": dirs_ok,
         "wordlist_ready": wordlist_ok,
     }
