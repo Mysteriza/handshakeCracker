@@ -55,11 +55,11 @@ from src.console import console, colored_log, log_error, log_debug
 from src.config import HANDSHAKES_DIR, WORDLIST_NAME
 from src.utils import (
     choose_wordlist, scan_default_directory, get_manual_handshake_paths,
-    sanitize_ssid
+    sanitize_ssid, strip_capture_extension
 )
 from src.validator import validate_all_handshakes
 from src.cracker import get_already_cracked_essids, AircrackBackend
-from src.hashcat import HashcatBackend
+from src.hashcat import HashcatBackend, HASHCAT_EXHAUSTED
 from src.setup import auto_setup
 from src.backend import CrackerBackend
 
@@ -172,9 +172,7 @@ def main():
             backend = AircrackBackend()
 
         for idx, handshake_path in enumerate(deduped, 1):
-            base_essid = os.path.basename(handshake_path).replace(
-                ".cap", ""
-            ).replace(".pcap", "")
+            base_essid = strip_capture_extension(handshake_path)
 
             console.print(f"\n{SEPARATOR}")
             console.print(f"Handshake {idx}/{len(deduped)}: {base_essid}")
@@ -183,14 +181,15 @@ def main():
             cracked = backend.crack(handshake_path, wordlist_path, base_essid)
             log_debug(f"main: backend returned {cracked!r}")
 
-            if cracked == "HASHCAT_EXHAUSTED":
-                console.print("\n[yellow]Hashcat exhausted wordlist without finding password.[/yellow]")
-                console.print("[info]Fallback to aircrack-ng...[/info]")
-                log_debug("main: hashcat exhausted, fallback to AircrackBackend")
-
+            if cracked is None and use_hashcat:
+                colored_log("warning", "Hashcat failed — falling back to aircrack-ng.")
+                log_debug("main: hashcat failed, fallback to AircrackBackend")
                 fallback = AircrackBackend()
                 cracked = fallback.crack(handshake_path, wordlist_path, base_essid)
                 log_debug(f"main: fallback aircrack-ng returned {cracked!r}")
+            elif cracked == HASHCAT_EXHAUSTED:
+                cracked = None
+                colored_log("warning", "Password not found in wordlist. Try a larger wordlist.")
 
             if cracked:
                 console.print("  [green]Done.[/green]")
