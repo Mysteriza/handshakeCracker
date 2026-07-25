@@ -1,7 +1,7 @@
-import datetime
 import sys
 import os
 import tempfile
+import logging
 
 from rich.console import Console
 
@@ -35,26 +35,30 @@ _enable_vt()
 _init_colorama()
 
 console = Console(highlight=False)
-_error_log_file = None
+
+_logger = logging.getLogger("handshakeCracker")
+_logger.setLevel(logging.DEBUG)
 
 
-def _get_error_log():
-    global _error_log_file
-    if _error_log_file is not None:
-        return _error_log_file
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = f"error_log_{timestamp}.txt"
-    for base in [os.getcwd(), tempfile.gettempdir()]:
-        try:
-            path = os.path.join(base, name)
-            with open(path, "a"):
-                pass
-            _error_log_file = path
-            return path
-        except (OSError, PermissionError):
-            continue
-    _error_log_file = os.path.join(tempfile.gettempdir(), name)
-    return _error_log_file
+def _get_log_dir() -> str:
+    base = os.getcwd()
+    try:
+        test_path = os.path.join(base, "debug_log.txt")
+        with open(test_path, "a"):
+            pass
+        return base
+    except (OSError, PermissionError):
+        return tempfile.gettempdir()
+
+
+from datetime import datetime
+
+_log_file = os.path.join(_get_log_dir(), f"debug_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+
+_handler = logging.FileHandler(_log_file, encoding='utf-8')
+_formatter = logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s", "%Y-%m-%d %H:%M:%S")
+_handler.setFormatter(_formatter)
+_logger.addHandler(_handler)
 
 
 def colored_log(level: str, message: str):
@@ -63,24 +67,16 @@ def colored_log(level: str, message: str):
     console.print(f"{prefix} {message}")
 
 
-def _log_raw(prefix: str, message: str, data=None):
-    error_log = _get_error_log()
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_message = f"[{timestamp}] {prefix}: {message}"
-    if data is not None:
-        log_message += f" - {data}"
-    with open(error_log, "a") as f:
-        f.write(log_message + "\n")
-
-
 def log_debug(message: str, data=None):
-    _log_raw("DEBUG", message, data)
+    if data is not None:
+        _logger.debug(f"{message} - {data}")
+    else:
+        _logger.debug(message)
 
 
-def log_error(message: str, error: Exception = None):
-    extra = ""
+def log_error(message: str, error: Exception | None = None):
     if error:
-        extra = f" - Exception: {type(error).__name__}: {error}"
-    _log_raw("ERROR", message, extra.strip("- ") if extra else None)
-    if error:
-        colored_log("error", f"An error occurred. Details logged to {_get_error_log()}")
+        _logger.error(f"{message} - Exception: {type(error).__name__}: {error}")
+        colored_log("error", f"An error occurred. Details logged to {_log_file}")
+    else:
+        _logger.error(message)
