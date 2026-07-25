@@ -604,33 +604,25 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         except Exception:
             pass
 
+    from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+
+    messages = [
+        f"Cracking {display_essid}... Initializing kernels",
+        f"Cracking {display_essid}... Running",
+        f"Cracking {display_essid}... Testing candidates",
+        f"Cracking {display_essid}... Almost there",
+    ]
+
+    progress = Progress(
+        SpinnerColumn(spinner_name="dots12", style="cyan"),
+        TextColumn("[progress.description]{task.description}"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+    )
+
     proc = None
-    import threading
-    _spinner_stop = threading.Event()
-
-    def _spinner_thread():
-        chars = ['-', '\\', '|', '/']
-        msg_queue = [
-            f"Hashcat cracking {display_essid}... Initializing kernels (may take 30-60s)...",
-            f"Hashcat cracking {display_essid}... Running...",
-            f"Hashcat cracking {display_essid}... Testing candidates...",
-            f"Hashcat cracking {display_essid}... Almost there...",
-        ]
-        idx = 0
-        last_switch = time.time()
-        c = 0
-        while not _spinner_stop.is_set():
-            now = time.time()
-            if now - last_switch >= 8:
-                idx = (idx + 1) % len(msg_queue)
-                last_switch = now
-            sys.stdout.write(f"\r  {chars[c % 4]} {msg_queue[idx]}".ljust(110) + "\r")
-            sys.stdout.flush()
-            c += 1
-            time.sleep(0.25)
-
     try:
-        # Do NOT use CREATE_NO_WINDOW — it silently breaks Hashcat stdout pipe on Windows
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -640,42 +632,47 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
         assert proc.stdout is not None, "stdout pipe not created"
         log_debug(f"crack_with_hashcat: subprocess started pid={proc.pid}")
 
-        t = threading.Thread(target=_spinner_thread, daemon=True)
-        t.start()
-
         hashcat_output: list[str] = []
         line_count = 0
         kernel_init_done = False
 
-        for raw_line in proc.stdout:
-            line = raw_line.rstrip()
-            line_count += 1
-            hashcat_output.append(line)
+        with progress:
+            task = progress.add_task(f"[cyan]{messages[0]}", total=None)
+            msg_idx = 0
+            last_msg_switch = time.time()
 
-            # Once we see the first progress/status line, kernels are done — apply low priority
-            if not kernel_init_done and line and not line.startswith("WPA*02*"):
-                kernel_init_done = True
-                if _SYSTEM == "Windows":
-                    try:
-                        import ctypes
-                        k32 = ctypes.windll.kernel32
-                        h = k32.OpenProcess(0x1F0FFF, False, proc.pid)
-                        if h:
-                            k32.SetPriorityClass(h, 0x00004000)
-                            log_debug("crack_with_hashcat: kernel init done, set BELOW_NORMAL priority")
-                            k32.CloseHandle(h)
-                    except Exception as e:
-                        log_debug("crack_with_hashcat: failed to set priority", str(e))
+            for raw_line in proc.stdout:
+                line = raw_line.rstrip()
+                line_count += 1
+                hashcat_output.append(line)
+
+                # Cycle through status messages every 8 seconds
+                now = time.time()
+                if now - last_msg_switch >= 8:
+                    msg_idx = (msg_idx + 1) % len(messages)
+                    last_msg_switch = now
+                    progress.update(task, description=f"[cyan]{messages[msg_idx]}")
+
+                # Once we see the first non-hash line, kernels are done
+                if not kernel_init_done and line and not line.startswith("WPA*02*"):
+                    kernel_init_done = True
+                    progress.update(task, description=f"[cyan]{messages[1]}")
+                    if _SYSTEM == "Windows":
+                        try:
+                            import ctypes
+                            k32 = ctypes.windll.kernel32
+                            h = k32.OpenProcess(0x1F0FFF, False, proc.pid)
+                            if h:
+                                k32.SetPriorityClass(h, 0x00004000)
+                                log_debug("crack_with_hashcat: kernel init done, set BELOW_NORMAL priority")
+                                k32.CloseHandle(h)
+                        except Exception as e:
+                            log_debug("crack_with_hashcat: failed to set priority", str(e))
 
         proc.wait()
         hashcat_output.append(f"[PROCESS EXIT CODE: {proc.returncode}]")
         _log_hashcat_output("HASHCAT OUTPUT", hashcat_output)
         log_debug(f"crack_with_hashcat: process exited rc={proc.returncode} total_lines={line_count}")
-
-        _spinner_stop.set()
-        t.join(timeout=2)
-        sys.stdout.write("\r" + " " * 110 + "\r")
-        sys.stdout.flush()
 
         # Primary: read password from potfile — most reliable across all Hashcat versions
         password = None
@@ -759,31 +756,22 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     except FileNotFoundError as e:
         _log_hashcat_output("CRASH", [f"FileNotFoundError: {e}"])
         log_error("hashcat binary not found at path", e)
-        _spinner_stop.set()
-        sys.stdout.write("\r" + " " * 110 + "\r")
-        sys.stdout.flush()
         return None
     except KeyboardInterrupt:
-        _spinner_stop.set()
         if proc:
             try:
                 proc.terminate()
             except Exception:
                 pass
-        sys.stdout.write("\r" + " " * 110 + "\r")
-        sys.stdout.flush()
         colored_log("warning", "Hashcat cracking interrupted by user.")
         return HASHCAT_EXHAUSTED
     except Exception as e:
-        _spinner_stop.set()
         if proc:
             try:
                 proc.terminate()
             except Exception:
                 pass
         log_error("Hashcat execution failed", e)
-        sys.stdout.write("\r" + " " * 110 + "\r")
-        sys.stdout.flush()
         return None
 
 
