@@ -11,24 +11,32 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 - **GPU acceleration** — Hashcat (GPU) is the primary cracker; auto-falls back to aircrack-ng (CPU) only on failure
 - **Smart fallback** — If hashcat exhausts all passwords without a match, skips aircrack-ng instead of wasting time
 - **One-time kernel warmup** — First run compiles GPU kernels with live spinner (30-90s), cached for subsequent runs
+- **Auto-Update** — Automatically checks GitHub for new commits on startup and applies them transparently without external dependencies
 - **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches wordlist on first run
 - **Cross-platform** — Windows auto-downloads binaries; Linux auto-installs via apt-get
 - **EAPOL validation** — Scapy-based M1/M2/M3/M4 table rejects invalid captures before cracking
 - **Batch processing** — Queue multiple .cap/.pcap files from `handshakes/`
 - **Duplicate skip** — Skips networks already cracked in previous runs
-- **Dynamic parallelism** — CPU mode uses 50% of cores at BELOW_NORMAL priority
+- **Dynamic GPU Workload** — Adaptively uses `Workload 4` with Optimized Kernels (`-O`) for discrete GPUs, and safe standard kernels for integrated GPUs.
 - **Diagnostic logging** — Hashcat output logged to `hc22000_cache/hashcat_debug.log` for troubleshooting
-- **Debug logging** — Detailed logs written to `debug_log.txt`
+- **Debug logging** — Detailed logs written to `debug_log.txt` (rotated automatically)
 - **Permission resilient** — Falls back to `%TEMP%` automatically if the project directory isn't writable
 
 ## Performance
 
-| Method | Device | Speed (PMK/s) | 10M passwords |
-|--------|--------|:------------:|:-------------:|
-| CPU (aircrack-ng) | 4-core laptop | ~2,000 | ~83 minutes |
-| CPU (aircrack-ng) | 16-core desktop | ~8,000 | ~21 minutes |
-| GPU (hashcat + GTX 1060) | Dedicated GPU | ~300,000 | ~33 seconds |
-| GPU (hashcat + RTX 3080) | Dedicated GPU | ~1,200,000 | ~8 seconds |
+Estimated benchmark for Hashcat mode 22000 (WPA-PBKDF2-PMKID+EAPOL). Actual performance varies based on driver, thermal headroom, and laptop vs desktop variants.
+
+| Method | Device | Speed (kH/s) | 400k passwords | 10M passwords |
+|--------|--------|:------------:|:-------------:|:-------------:|
+| CPU (aircrack-ng) | 4-core laptop | ~2 | ~3.3 mins | ~83 minutes |
+| GPU (Hashcat) | AMD Radeon (Integrated) | ~35 | ~12 seconds | ~4.7 minutes |
+| GPU (Hashcat) | GTX 1060 | ~140 | ~3 seconds | ~71 seconds |
+| GPU (Hashcat) | RTX 2060 | ~420 | < 1 second | ~23 seconds |
+| GPU (Hashcat) | RTX 3050 | ~300 | < 1 second | ~33 seconds |
+| GPU (Hashcat) | RTX 3060 / 3060 Ti | ~450 - ~580 | < 1 second | ~17-22 secs |
+| GPU (Hashcat) | RTX 4050 | ~320 | < 1 second | ~31 seconds |
+| GPU (Hashcat) | RTX 4060 / 4060 Ti | ~460 - ~600 | < 1 second | ~16-21 secs |
+| GPU (Hashcat) | RTX 4090 | ~2,500 | Instant | ~4 seconds |
 
 > Hashcat uses **GPU** as the primary cracker. Aircrack-ng (CPU) is the fallback only if hashcat
 > is unavailable or crashes during execution.
