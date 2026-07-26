@@ -5,6 +5,13 @@ import sys
 import subprocess
 import signal
 
+# ── Phase 0: Auto-Update Check ─────────────────────────────────────────
+try:
+    from src.updater import check_and_update
+    check_and_update()
+except Exception:
+    pass
+
 # ── Phase 1: Auto-install Python dependencies ──────────────────────────
 _REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements.txt")
 
