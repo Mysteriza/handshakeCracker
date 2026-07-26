@@ -11,11 +11,13 @@ def _enable_vt():
         if sys.platform == "win32":
             import ctypes
             kernel32 = ctypes.windll.kernel32
-            hStdout = kernel32.GetStdHandle(-11)
+            STD_OUTPUT_HANDLE = -11
+            ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+            hStdout = kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
             mode = ctypes.c_uint32()
             if kernel32.GetConsoleMode(hStdout, ctypes.byref(mode)):
-                mode.value |= 0x0004
-                kernel32.SetConsoleMode(hStdout, mode)
+                mode.value |= ENABLE_VIRTUAL_TERMINAL_PROCESSING
+                kernel32.SetConsoleMode(hStdout, mode.value)
                 return True
     except Exception:
         pass

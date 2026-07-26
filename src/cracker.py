@@ -187,8 +187,7 @@ class AircrackBackend(CrackerBackend):
 
             _clear_status()
 
-            # If we return early or finish, make sure to terminate outstanding procs and join threads
-            _terminate_all()
+            # If we return early or finish, make sure to join threads
             for t in threads:
                 if t.is_alive():
                     t.join(timeout=2)
@@ -242,10 +241,9 @@ class AircrackBackend(CrackerBackend):
             return password
 
         except Exception as e:
-            _terminate_all()
-            _clear_status()
             log_error(f"Critical error during cracking process for {handshake_path}", e)
             console.print("  Cracking terminated due to an unexpected error.")
             return None
         finally:
             _terminate_all()
+            _clear_status()

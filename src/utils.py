@@ -36,7 +36,7 @@ def lower_process_priority(pid: int):
 
 
 def sanitize_ssid(ssid: str) -> str:
-    return re.sub(r'[\\/*?:"<>|]', "", ssid).replace(" ", "_").strip()
+    return re.sub(r'[\\/*?:"<>|]', "", ssid).strip().replace(" ", "_")
 
 def count_wordlist_lines(path: str) -> int:
     """Count lines in a wordlist file efficiently (1 MB buffer chunks)."""

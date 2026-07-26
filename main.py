@@ -8,28 +8,7 @@ import signal
 # ── Phase 1: Auto-install Python dependencies ──────────────────────────
 _REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements.txt")
 
-
-def _pip_install_requirements(req_path: str) -> bool:
-    """Install pip packages with PEP 668 fallback."""
-    base_cmd = [sys.executable, "-m", "pip", "install", "--user", "-r", req_path]
-    try:
-        subprocess.run(base_cmd, check=True, capture_output=True, text=True)
-        return True
-    except subprocess.CalledProcessError as e:
-        stderr = (e.stderr or "").lower()
-        stdout = (e.stdout or "").lower()
-        # PEP 668: externally-managed-environment
-        if "externally-managed" in stderr or "externally-managed" in stdout:
-            print("Detected PEP 668 (externally-managed environment). Retrying with --break-system-packages...")
-            try:
-                subprocess.run(base_cmd + ["--break-system-packages"], check=True, capture_output=True, text=True)
-                return True
-            except subprocess.CalledProcessError:
-                return False
-        return False
-    except Exception:
-        return False
-
+from src.bootstrap import pip_install_requirements as _pip_install_requirements
 
 try:
     import rich  # noqa: F401
@@ -47,7 +26,7 @@ except ImportError:
         sys.exit(1)
 
 # ── Phase 2: Project imports ───────────────────────────────────────────
-from prompt_toolkit.validation import Validator, ValidationError
+
 from prompt_toolkit.shortcuts import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 

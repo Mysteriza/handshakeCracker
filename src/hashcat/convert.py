@@ -6,8 +6,7 @@ from scapy.layers.eap import EAPOL, EAPOL_KEY
 from src.console import log_error, log_debug
 from src.validator import _classify_eapol
 _SYSTEM = platform.system()
-HASHCAT_EXHAUSTED = '__HASHCAT_EXHAUSTED__'
-_hashcat_path_cache = None
+
 
 def _format_mac(mac) -> str:
     if isinstance(mac, str):
@@ -115,13 +114,7 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str, packets: list | None
     if not all([ap_mac, sta_mac, anonce, snonce, mic, key_ver]):
         log_debug(f'convert_cap_to_hc22000: validation failed - missing fields: ap={bool(ap_mac)} sta={bool(sta_mac)} anonce={bool(anonce)} snonce={bool(snonce)} mic={bool(mic)} kv={bool(key_ver)}')
         return False
-    assert ap_mac is not None
-    assert sta_mac is not None
-    assert anonce is not None
-    assert snonce is not None
-    assert mic is not None
-    assert key_ver is not None
-    assert eapol_raw_bytes is not None
+
     if not essid:
         essid = 'Unknown'
     essid_hex = essid.encode('utf-8', errors='replace').hex()
@@ -133,18 +126,13 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str, packets: list | None
     eapol_bytes[81:97] = b'\x00' * 16
     eapol_hex = bytes(eapol_bytes).hex()
     log_debug(f'convert_cap_to_hc22000: zeroed MIC in EAPOL frame original_mic_start={orig_mic[:16]}...')
-    assert ap_mac is not None
-    assert sta_mac is not None
-    assert anonce is not None
+
     ap_mac_no_colon = ap_mac.replace(':', '')
     sta_mac_no_colon = sta_mac.replace(':', '')
     has_m3 = 'M3' in frames
     has_m4 = 'M4' in frames
-    if has_m3 or has_m4:
-        messagpair = '02'
-    else:
-        messagpair = '00'
-    line = f'WPA*02*{mic}*{ap_mac_no_colon}*{sta_mac_no_colon}*{essid_hex}*{anonce}*{eapol_hex}*{messagpair}'
+    message_pair = '02' if (has_m3 or has_m4) else '00'
+    line = f'WPA*02*{mic}*{ap_mac_no_colon}*{sta_mac_no_colon}*{essid_hex}*{anonce}*{eapol_hex}*{message_pair}'
     log_debug(f'convert_cap_to_hc22000: writing hc22000 file to {output_path}')
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
     with open(output_path, 'w') as f:

@@ -8,7 +8,7 @@ from src.console import console, colored_log, log_error, log_debug
 from src.config import BIN_DIR, HASHCAT_VERSION, HASHCAT_URL, HCOV_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME, HASHCAT_SHA256
 from src.utils import download_with_progress
 _SYSTEM = platform.system()
-HASHCAT_EXHAUSTED = '__HASHCAT_EXHAUSTED__'
+
 _hashcat_path_cache = None
 
 def _find_in_path(name: str) -> str | None:
@@ -52,7 +52,7 @@ def _extract_archive(archive: str, dest: str) -> bool:
             if not os.path.isfile(sz):
                 colored_log('info', 'Downloading 7-Zip standalone extractor...')
                 log_debug('_extract_archive: downloading 7zr.exe')
-                from src.utils import download_with_progress
+
                 download_with_progress('https://www.7-zip.org/a/7zr.exe', sz, 'Downloading 7zr')
             extractor = [sz, 'x', archive, f'-o{dest}', '-y']
             extractor_name = '7zr'

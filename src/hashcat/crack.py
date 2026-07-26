@@ -10,7 +10,7 @@ from src.config import HCOV_DIR, RESULTS_DIR
 from src.utils import sanitize_ssid, strip_capture_extension, lower_process_priority
 _SYSTEM = platform.system()
 HASHCAT_EXHAUSTED = '__HASHCAT_EXHAUSTED__'
-_hashcat_path_cache = None
+
 
 def _extract_password_from_lines(lines: set[str]) -> str | None:
     for pot_line in lines:
@@ -39,15 +39,10 @@ def _line_is_noise(line: str) -> bool:
     return any((line.startswith(p) for p in noise_prefixes))
 
 def _log_hashcat_output(heading: str, lines: list[str]):
-    log_path = os.path.join(HCOV_DIR, 'hashcat_debug.log')
-    try:
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(f'\n=== {heading} ===\n')
-            for line in lines:
-                f.write(line + '\n')
-
-    except Exception:
-        pass
+    log_debug(f"=== {heading} ===")
+    for line in lines:
+        if line.strip():
+            log_debug(f"  {line}")
 
 def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str, gpu_is_discrete: bool=False) -> str | None:
     start_time = time.time()
@@ -75,17 +70,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     except Exception as e:
         log_error('Failed to read hc22000 file', e)
         return None
-    try:
-        log_debug(f'crack_with_hashcat: testing hashcat binary with --version (cwd={hc_dir})')
-        ver = subprocess.run([hc_exe, '--version'], capture_output=True, text=True, timeout=30, cwd=hc_dir)
-        _log_hashcat_output('hashcat --version', [ver.stdout.strip(), ver.stderr.strip(), f'rc={ver.returncode}'])
-        log_debug(f'crack_with_hashcat: hashcat --version stdout={ver.stdout.strip()!r} stderr={ver.stderr.strip()!r} rc={ver.returncode}')
-        if ver.returncode != 0:
-            log_error('hashcat binary test failed', Exception(f'rc={ver.returncode} stderr={ver.stderr}'))
-            return None
-    except Exception as e:
-        log_error('hashcat binary test threw exception', e)
-        return None
+
     log_debug('crack_with_hashcat: killing any lingering hashcat process')
     try:
         if _SYSTEM == 'Windows':
@@ -95,7 +80,10 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     except Exception:
         pass
     workload = '4' if gpu_is_discrete else '2'
-    cmd = [hc_exe, '-m', '22000', '-a', '0', '-w', workload, '-O', '--session', sanitize_ssid(display_essid), '--potfile-path', potfile, hc22000_path, wordlist_path]
+    cmd = [hc_exe, '-m', '22000', '-a', '0', '-w', workload]
+    if gpu_is_discrete:
+        cmd.append('-O')
+    cmd.extend(['--session', sanitize_ssid(display_essid), '--potfile-path', potfile, hc22000_path, wordlist_path])
     cmd_str = ' '.join(cmd)
     _log_hashcat_output('COMMAND', [cmd_str])
     log_debug(f'crack_with_hashcat: running command: {cmd_str}')
@@ -172,7 +160,7 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
                 f.write(f'Time Taken: {time_str}\n')
             if sys.platform != 'win32':
                 try:
-                    os.chmod(result_file, 384)
+                    os.chmod(result_file, 0o600)
                 except OSError:
                     pass
             console.print(f'  Saved to: {result_file}')
@@ -208,11 +196,10 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
 
 def hashcat_crack_handshake(handshake_path: str, wordlist_path: str, display_essid: str, gpu_is_discrete: bool=False, packets: list | None=None) -> str | None:
     log_debug(f'hashcat_crack_handshake: start handshake={handshake_path} wordlist={wordlist_path} essid={display_essid!r}')
-    if not ensure_hashcat():
-        log_debug('hashcat_crack_handshake: ensure_hashcat returned False, aborting')
+    hc_exe = get_hashcat_path()
+    if not hc_exe:
+        log_debug('hashcat_crack_handshake: hashcat path not cached, aborting')
         return None
-    log_debug('hashcat_crack_handshake: ensure_hashcat OK')
-    add_bin_to_path()
     colored_log('info', 'Converting .cap to hashcat format (hc22000)...')
     hc22000_path = os.path.join(HCOV_DIR, strip_capture_extension(handshake_path) + '.hc22000')
     log_debug(f'hashcat_crack_handshake: hc22000 output path: {hc22000_path}')
@@ -223,7 +210,7 @@ def hashcat_crack_handshake(handshake_path: str, wordlist_path: str, display_ess
     if not warmup_hashcat_kernel(hc22000_path):
         log_debug('hashcat_crack_handshake: warmup failed, continuing anyway')
     log_debug('hashcat_crack_handshake: conversion OK, calling crack_with_hashcat')
-    result = crack_with_hashcat(hc22000_path, wordlist_path, display_essid)
+    result = crack_with_hashcat(hc22000_path, wordlist_path, display_essid, gpu_is_discrete)
     log_debug(f'hashcat_crack_handshake: crack_with_hashcat returned {result!r}')
     try:
         os.remove(hc22000_path)
