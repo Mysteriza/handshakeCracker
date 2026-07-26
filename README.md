@@ -38,6 +38,8 @@ Estimated benchmark for Hashcat mode 22000 (WPA-PBKDF2-PMKID+EAPOL). Actual perf
 | GPU (Hashcat) | RTX 4060 / 4060 Ti | ~460 - ~600 | < 1 second | ~16-21 secs |
 | GPU (Hashcat) | RTX 4090 | ~2,500 | Instant | ~4 seconds |
 
+> **Note on kH/s:** `kH/s` stands for **kilo-hashes per second** (thousands of hashes per second). For example, `420 kH/s` means the GPU is processing **420,000 passwords/second**.
+
 > Hashcat uses **GPU** as the primary cracker. Aircrack-ng (CPU) is the fallback only if hashcat
 > is unavailable or crashes during execution.
 
