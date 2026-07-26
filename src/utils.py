@@ -54,11 +54,14 @@ def scan_default_directory(directory_path: str) -> list[str]:
         return []
 
     colored_log("info", f"Scanning {directory_path}/ for .cap/.pcap files...")
-    for root, _, files in os.walk(directory_path):
-        for file in files:
-            if file.lower().endswith((".cap", ".pcap")):
-                full_path = os.path.join(root, file)
-                found_files.append(full_path)
+    # NOTE: Only scans the DIRECT directory, NOT sub-folders.
+    # Handshake files in sub-folders are intentionally ignored.
+    try:
+        for entry in os.scandir(directory_path):
+            if entry.is_file() and entry.name.lower().endswith((".cap", ".pcap")):
+                found_files.append(entry.path)
+    except OSError as e:
+        log_error(f"Failed to scan {directory_path}", e)
     return found_files
 
 
