@@ -74,7 +74,7 @@ def _cleanup_old_logs(log_dir: str, max_logs: int = 10):
 from datetime import datetime
 
 _log_dir = _get_log_dir()
-_cleanup_old_logs(_log_dir, max_logs=10)
+_cleanup_old_logs(_log_dir, max_logs=3)
 _log_file = os.path.join(_log_dir, f"debug_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
 
 _handler = logging.FileHandler(_log_file, encoding='utf-8')
