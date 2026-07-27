@@ -40,6 +40,8 @@ def _log_hashcat_output(heading: str, lines: list[str]):
 
 def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str, gpu_is_discrete: bool=False) -> str | None:
     start_time = time.time()
+    hc22000_path = os.path.abspath(hc22000_path)
+    wordlist_path = os.path.abspath(wordlist_path)
     hc_exe = get_hashcat_path()
     log_debug(f'crack_with_hashcat: start hc_exe={hc_exe!r} hc22000={hc22000_path} wordlist={wordlist_path}')
     if not hc_exe:

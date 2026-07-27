@@ -151,13 +151,13 @@ def warmup_hashcat_kernel(hc22000_path: str | None=None) -> bool:
         log_debug('warmup_hashcat_kernel: no real hash file available, skipping warmup')
         return False
     os.makedirs(HCOV_DIR, exist_ok=True)
-    warmup_hash = hc22000_path
-    dummy_wordlist = os.path.join(HCOV_DIR, '_warmup_wl.txt')
+    warmup_hash = os.path.abspath(hc22000_path)
+    dummy_wordlist = os.path.abspath(os.path.join(HCOV_DIR, '_warmup_wl.txt'))
     cleanup_files: list[str] = [dummy_wordlist]
     log_debug(f'warmup_hashcat_kernel: using real hash: {hc22000_path}')
     with open(dummy_wordlist, 'w') as f:
         f.write('testpassword\n')
-    potfile = os.path.join(HCOV_DIR, '_warmup.potfile')
+    potfile = os.path.abspath(os.path.join(HCOV_DIR, '_warmup.potfile'))
     cmd = [hc_exe, '-m', '22000', '-a', '0', '-w', '1', '--potfile-path', potfile, warmup_hash, dummy_wordlist]
     cleanup_files.append(potfile)
     try:
