@@ -26,21 +26,45 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 
 ## Performance
 
-Estimated benchmark for Hashcat mode 22000 (WPA-PBKDF2-PMKID+EAPOL). Actual performance varies based on driver, thermal headroom, and laptop vs desktop variants.
+Estimated benchmark for Hashcat mode 22000 (WPA-PBKDF2-PMKID+EAPOL). **Actual performance varies based on driver, thermal headroom, and laptop vs desktop variants.**
 
-| Method | Device | Speed (kH/s) | 400k passwords | 10M passwords |
-|--------|--------|:------------:|:-------------:|:-------------:|
-| CPU (aircrack-ng) | 4-core laptop | ~2 | ~3.3 mins | ~83 minutes |
-| GPU (Hashcat) | AMD Radeon (Integrated) | ~35 | ~12 seconds | ~4.7 minutes |
-| GPU (Hashcat) | GTX 1060 | ~140 | ~3 seconds | ~71 seconds |
-| GPU (Hashcat) | RTX 2060 | ~420 | < 1 second | ~23 seconds |
-| GPU (Hashcat) | RTX 3050 | ~300 | < 1 second | ~33 seconds |
-| GPU (Hashcat) | RTX 3060 / 3060 Ti | ~450 - ~580 | < 1 second | ~17-22 secs |
-| GPU (Hashcat) | RTX 4050 | ~320 | < 1 second | ~31 seconds |
-| GPU (Hashcat) | RTX 4060 / 4060 Ti | ~460 - ~600 | < 1 second | ~16-21 secs |
-| GPU (Hashcat) | RTX 4090 | ~2,500 | Instant | ~4 seconds |
+<details>
+<summary><b>Click to expand Comprehensive GPU Performance Table</b></summary>
 
-> **Note on kH/s:** `kH/s` stands for **kilo-hashes per second** (thousands of hashes per second). For example, `420 kH/s` means the GPU is processing **420,000 passwords/second**.
+| Architecture | Device | Speed (passwords/s) | Full Wordlist (9.5M) |
+|--------------|--------|:-------------------:|:--------------------:|
+| CPU | 4-core Intel/AMD | ~2,000 | ~79 mins |
+| iGPU | AMD Radeon Graphics (My Device) | ~31,000 | ~5.1 mins |
+| **GTX 900** | GTX 960 | ~75,000 | ~126 secs |
+| | GTX 970 | ~110,000 | ~86 secs |
+| | GTX 980 Ti | ~170,000 | ~55 secs |
+| **GTX 1000** | GTX 1050 Ti | ~80,000 | ~118 secs |
+| | GTX 1060 | ~140,000 | ~67 secs |
+| | GTX 1070 | ~220,000 | ~43 secs |
+| | GTX 1080 Ti | ~400,000 | ~23 secs |
+| **RTX 2000** | RTX 2060 | ~420,000 | ~22 secs |
+| | RTX 2070 | ~540,000 | ~17 secs |
+| | RTX 2080 Ti | ~880,000 | ~10 secs |
+| **RTX 3000** | RTX 3050 | ~300,000 | ~31 secs |
+| | RTX 3060 | ~450,000 | ~21 secs |
+| | RTX 3060 Ti | ~580,000 | ~16 secs |
+| | RTX 3070 | ~680,000 | ~13 secs |
+| | RTX 3080 | ~1,050,000 | ~9 secs |
+| | RTX 3090 | ~1,250,000 | ~7.6 secs |
+| **RTX 4000** | RTX 4050 (Laptop) | ~320,000 | ~29 secs |
+| | RTX 4060 | ~460,000 | ~20 secs |
+| | RTX 4060 Ti | ~600,000 | ~15 secs |
+| | RTX 4070 | ~820,000 | ~11 secs |
+| | RTX 4070 Ti | ~1,100,000 | ~8.6 secs |
+| | RTX 4080 | ~1,600,000 | ~5.9 secs |
+| | RTX 4090 | ~2,500,000 | ~3.8 secs |
+| **RTX 5000** | RTX 5060 | ~700,000* | ~13 secs |
+| | RTX 5070 Ti | ~1,556,000 | ~6.1 secs |
+| | RTX 5080 | ~2,200,000* | ~4.3 secs |
+| | RTX 5090 | ~3,500,000* | ~2.7 secs |
+
+*\*Estimated based on architectural improvements.*
+</details>
 
 > Hashcat uses **GPU** as the primary cracker. Aircrack-ng (CPU) is the fallback only if hashcat
 > is unavailable or crashes during execution.
