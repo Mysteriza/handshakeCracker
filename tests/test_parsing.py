@@ -24,3 +24,17 @@ def test_format_mac_bytes():
 
 def test_format_mac_invalid():
     assert _format_mac("invalid") == "00:00:00:00:00:00"
+
+def test_format_mac_dash_format():
+    assert _format_mac("AA-BB-CC-DD-EE-FF") == "aa:bb:cc:dd:ee:ff"
+
+def test_format_mac_no_separator():
+    assert _format_mac("aabbccddeeff") == "aa:bb:cc:dd:ee:ff"
+
+def test_extract_password_boundary_8_chars():
+    lines = {"hash:12345678"}
+    assert _extract_password_from_lines(lines) == "12345678"
+
+def test_extract_password_boundary_63_chars():
+    lines = {"hash:" + "x" * 63}
+    assert _extract_password_from_lines(lines) == "x" * 63

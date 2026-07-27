@@ -1,5 +1,6 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from src.console import console
 from scapy.all import PcapReader
@@ -34,11 +35,10 @@ class ValidationResult:
     has_m3: bool = False
     has_m4: bool = False
     error: str | None = None
-    relevant_packets: list = None
+    relevant_packets: list[Any] = field(default_factory=list)
 
 def validate_handshake(filepath: str) -> ValidationResult:
     result = ValidationResult()
-    result.relevant_packets = []
     try:
         with PcapReader(filepath) as pcap:
             for pkt in pcap:

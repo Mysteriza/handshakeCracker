@@ -21,3 +21,13 @@ def test_sanitize_ssid_special_chars():
     assert sanitize_ssid('Net/work') == 'Network'
     assert sanitize_ssid('  spaces  ') == 'spaces'
     assert sanitize_ssid('name:value') == 'namevalue'
+
+def test_sanitize_ssid_emoji():
+    result = sanitize_ssid("WiFi 🏠")
+    assert "WiFi" in result
+
+def test_sanitize_ssid_empty():
+    assert sanitize_ssid("") == ""
+
+def test_sanitize_ssid_only_illegal():
+    assert sanitize_ssid('/*?:"<>|') == ""

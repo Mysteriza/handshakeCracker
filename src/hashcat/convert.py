@@ -1,11 +1,11 @@
 import os
-import platform
+
 from scapy.all import PcapReader
 from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeResp
 from scapy.layers.eap import EAPOL, EAPOL_KEY
 from src.console import log_error, log_debug
 from src.validator import _classify_eapol
-_SYSTEM = platform.system()
+
 
 
 def _format_mac(mac) -> str:

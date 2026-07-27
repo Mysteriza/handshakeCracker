@@ -7,8 +7,8 @@ __pycache__/
 /bin/
 debug_log*.txt
 /hc22000_cache/
-AGENTS.md
 *.commit_hash
 hashcat-*.zip
 hashcat-*.7z
 /kernels//logs/
+*.md

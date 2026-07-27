@@ -8,7 +8,8 @@ from rich.text import Text
 from src.console import console, colored_log, log_error, log_debug
 from src.config import (
     HANDSHAKES_DIR, RESULTS_DIR, WORDLIST_NAME, WORDLIST_URL,
-    AIRCRACK_WIN_URL, BIN_DIR, DEPS_DIR, AIRCRACK_ZIP_NAME, AIRCRACK_WIN_SHA256
+    AIRCRACK_WIN_URL, BIN_DIR, DEPS_DIR, AIRCRACK_ZIP_NAME, AIRCRACK_WIN_SHA256,
+    HCOV_DIR
 )
 from src.utils import download_wordlist, download_and_extract_zip, extract_local_zip
 from src.bootstrap import pip_install_requirements
@@ -148,7 +149,7 @@ def show_banner():
 
 
 def ensure_directories() -> bool:
-    from src.config import BIN_DIR, HCOV_DIR
+
     for directory in [RESULTS_DIR, HANDSHAKES_DIR, BIN_DIR, HCOV_DIR]:
         try:
             os.makedirs(directory, exist_ok=True)
@@ -160,10 +161,13 @@ def ensure_directories() -> bool:
                 colored_log("warning", f"Cannot create directory: {directory}")
 
 
-    has_cap = any(
-        f.lower().endswith(('.cap', '.pcap'))
-        for f in os.listdir(HANDSHAKES_DIR)
-    )
+    try:
+        has_cap = any(
+            f.lower().endswith(('.cap', '.pcap'))
+            for f in os.listdir(HANDSHAKES_DIR)
+        )
+    except OSError:
+        has_cap = False
     if not has_cap:
         colored_log("warning", f"No .cap/.pcap files found in '{HANDSHAKES_DIR}'.")
 

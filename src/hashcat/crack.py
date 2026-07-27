@@ -1,4 +1,4 @@
-from .setup import get_hashcat_path, ensure_hashcat, add_bin_to_path, warmup_hashcat_kernel
+from .setup import get_hashcat_path, warmup_hashcat_kernel
 from .convert import convert_cap_to_hc22000
 import os
 import sys
@@ -8,6 +8,7 @@ import subprocess
 from src.console import console, colored_log, log_error, log_debug
 from src.config import HCOV_DIR, RESULTS_DIR
 from src.utils import sanitize_ssid, strip_capture_extension, lower_process_priority
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 _SYSTEM = platform.system()
 HASHCAT_EXHAUSTED = '__HASHCAT_EXHAUSTED__'
 
@@ -29,14 +30,7 @@ def _read_potfile(path: str) -> set[str]:
     except Exception:
         return set()
 
-def _line_is_noise(line: str) -> bool:
-    """Return True if a hashcat status line should be filtered from user display."""
-    if not line:
-        return True
-    if line.startswith('WPA*02*') or line.startswith('$WPAPSK$'):
-        return True
-    noise_prefixes = ['Session..........:', 'Status...........:', 'Hash.Target......:', 'Time.Started.....:', 'Time.Estimated...:', 'Speed.Chars/sec..:', 'Speed.Dev.#', 'Speed.GPU.#', 'Progress.........:', 'Restore.Point....:', 'Restore.Subsec...:', 'Candidate.Engine.:', 'Candidates.......:', 'HWMon.GPU.#', 'HWMon.Dev.#', 'Started.........:', 'Stopped.........:', 'Input.Mode......:', 'Watchdog........:', '[s]tatus', '[p]ause', '[b]ypass', '[c]heckpoint', '[q]uit', 'The password was found', 'Password found on device']
-    return any((line.startswith(p) for p in noise_prefixes))
+
 
 def _log_hashcat_output(heading: str, lines: list[str]):
     log_debug(f"=== {heading} ===")
@@ -55,12 +49,6 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     os.makedirs(HCOV_DIR, exist_ok=True)
     potfile = os.path.join(HCOV_DIR, 'hashcat.potfile')
     log_debug(f'crack_with_hashcat: potfile={potfile} hc_dir={hc_dir}')
-    debug_log = os.path.join(HCOV_DIR, 'hashcat_debug.log')
-    try:
-        if os.path.exists(debug_log):
-            os.remove(debug_log)
-    except OSError:
-        pass
     _log_hashcat_output('DIAG', [f'Hashcat EXE: {hc_exe}', f'hc22000: {hc22000_path}', f'wordlist: {wordlist_path}', f'CWD: {hc_dir}'])
     try:
         with open(hc22000_path, 'r') as _f:
@@ -89,13 +77,13 @@ def crack_with_hashcat(hc22000_path: str, wordlist_path: str, display_essid: str
     log_debug(f'crack_with_hashcat: running command: {cmd_str}')
     potfile_before = _read_potfile(potfile)
     log_debug(f'crack_with_hashcat: potfile had {len(potfile_before)} entries before cracking')
-    from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
     messages = [f'Cracking {display_essid}... Initializing kernels', f'Cracking {display_essid}... Running', f'Cracking {display_essid}... Testing candidates', f'Cracking {display_essid}... Almost there']
     progress = Progress(SpinnerColumn(spinner_name='dots12', style='cyan'), TextColumn('[progress.description]{task.description}'), TimeElapsedColumn(), console=console, transient=True)
     proc = None
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', cwd=hc_dir)
-        assert proc.stdout is not None, 'stdout pipe not created'
+        if proc.stdout is None:
+            raise RuntimeError('stdout pipe not created')
         log_debug(f'crack_with_hashcat: subprocess started pid={proc.pid}')
         hashcat_output: list[str] = []
         line_count = 0

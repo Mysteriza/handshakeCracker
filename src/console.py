@@ -46,15 +46,13 @@ def _get_log_dir() -> str:
     base = os.path.join(os.getcwd(), "logs")
     try:
         os.makedirs(base, exist_ok=True)
-        test_path = os.path.join(base, ".write_test")
-        with open(test_path, "w") as f:
-            f.write("test")
-        os.remove(test_path)
-        return base
+        if os.access(base, os.W_OK):
+            return base
     except (OSError, PermissionError):
-        temp_dir = os.path.join(tempfile.gettempdir(), "handshakeCracker_logs")
-        os.makedirs(temp_dir, exist_ok=True)
-        return temp_dir
+        pass
+    temp_dir = os.path.join(tempfile.gettempdir(), "handshakeCracker_logs")
+    os.makedirs(temp_dir, exist_ok=True)
+    return temp_dir
 
 
 def _cleanup_old_logs(log_dir: str, max_logs: int = 10):

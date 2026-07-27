@@ -169,7 +169,8 @@ def warmup_hashcat_kernel(hc22000_path: str | None=None) -> bool:
         console.print('')
         start = time.time()
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', cwd=hc_dir)
-        assert proc.stdout is not None, 'stdout pipe not created'
+        if proc.stdout is None:
+            raise RuntimeError('stdout pipe not created')
         output_lines: list[str] = []
         device_name = ''
         import threading
@@ -190,11 +191,19 @@ def warmup_hashcat_kernel(hc22000_path: str | None=None) -> bool:
             output_lines.append(line_str)
             if line_str.startswith('* Device #'):
                 device_name = line_str.split(',')[0].replace('* Device #1: ', '').strip()
-        proc.wait(timeout=300)
-        _spin_stop.set()
-        spin_thread.join(timeout=2)
-        sys.stdout.write('\r' + ' ' * 40 + '\r')
-        sys.stdout.flush()
+        try:
+            proc.wait(timeout=300)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            log_debug('warmup_hashcat_kernel: timed out after 300s, process killed')
+            colored_log('warning', 'GPU kernel compilation timed out (>5 min). Skipping warmup.')
+            return False
+        finally:
+            _spin_stop.set()
+            spin_thread.join(timeout=2)
+            sys.stdout.write('\r' + ' ' * 40 + '\r')
+            sys.stdout.flush()
         elapsed = time.time() - start
         log_debug(f'warmup_hashcat_kernel: finished in {elapsed:.2f}s (rc={proc.returncode})')
         console.print('')

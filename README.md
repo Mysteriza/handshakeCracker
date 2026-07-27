@@ -45,7 +45,7 @@ Estimated benchmark for Hashcat mode 22000 (WPA-PBKDF2-PMKID+EAPOL). Actual perf
 
 ## Prerequisites
 
-- **Python 3.8+**
+- **Python 3.10+**
 - Internet connection (first-run downloads)
 
 ## Installation
