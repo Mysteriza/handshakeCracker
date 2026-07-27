@@ -1,5 +1,7 @@
 # Wi-Fi Handshake Cracker
 
+![Repo Size](https://img.shields.io/github/repo-size/Mysteriza/handshakeCracker?style=flat-square&color=blue)
+
 Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Windows + Linux), fully automatic setup.
 
 ## Screenshots

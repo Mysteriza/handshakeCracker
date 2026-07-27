@@ -16,11 +16,11 @@ def _find_writable_dir(preferred: str) -> str:
     return os.path.join(tempfile.gettempdir(), "handshakeCracker", preferred.lstrip("./\\"))
 
 
-WORDLIST_URL = "https://raw.githubusercontent.com/Mysteriza/WiFi-Password-Wordlist/main/wifite.txt"
+WORDLIST_URL = "https://raw.githubusercontent.com/Mysteriza/WiFi-Password-Wordlist/main/wifi-wordlist.txt"
 AIRCRACK_WIN_URL = "https://download.aircrack-ng.org/aircrack-ng-1.7-win.zip"
 HANDSHAKES_DIR = "handshakes"
 RESULTS_DIR = _find_writable_dir("cracked_results")
-WORDLIST_NAME = "wifite.txt"
+WORDLIST_NAME = "wifi-wordlist.txt"
 BIN_DIR = _find_writable_dir("bin")
 
 HASHCAT_VERSION = "7.1.2"
