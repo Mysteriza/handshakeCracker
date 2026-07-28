@@ -9,12 +9,13 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 
 ## Features
 
+- **Curated wordlist** — ~8.5M real-world passwords (96 MB), filtered to 8–63 chars with no duplicates, sorted for optimal cracking
 - **Custom wordlist** — Choose between the default wordlist or your own `.txt` file at runtime
 - **GPU acceleration** — Hashcat (GPU) is the primary cracker; auto-falls back to aircrack-ng (CPU) only on failure
 - **Smart fallback** — If hashcat exhausts all passwords without a match, skips aircrack-ng instead of wasting time
 - **One-time kernel warmup** — First run compiles GPU kernels with live spinner (30-90s), cached for subsequent runs
 - **Auto-Update** — Automatically checks GitHub for new commits on startup and applies them transparently without external dependencies
-- **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches wordlist on first run
+- **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches the curated 8.5M wordlist on first run
 - **Cross-platform** — Windows auto-downloads binaries; Linux auto-installs via apt-get
 - **EAPOL validation** — Scapy-based M1/M2/M3/M4 table rejects invalid captures before cracking
 - **Batch processing** — Queue multiple .cap/.pcap files from `handshakes/`
@@ -26,42 +27,42 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 
 ## Performance
 
-Estimated benchmark for Hashcat mode 22000 (WPA-PBKDF2-PMKID+EAPOL). **Actual performance varies based on driver, thermal headroom, and laptop vs desktop variants.**
+Estimated benchmark for Hashcat mode 22000 (WPA-PBKDF2-PMKID+EAPOL) against the **8.5M password wordlist**. **Actual performance varies based on driver, thermal headroom, and laptop vs desktop variants.**
 
 <details>
 <summary><b>Click to expand Comprehensive GPU Performance Table</b></summary>
 
-| Architecture | Device | Speed (passwords/s) | Full Wordlist (9.5M) |
+| Architecture | Device | Speed (passwords/s) | Full Wordlist (8.5M) |
 |--------------|--------|:-------------------:|:--------------------:|
-| CPU | 4-core Intel/AMD | ~2,000 | ~79 mins |
-| iGPU | AMD Radeon Graphics (My Device) | ~31,000 | ~5.1 mins |
-| **GTX 900** | GTX 960 | ~75,000 | ~126 secs |
-| | GTX 970 | ~110,000 | ~86 secs |
-| | GTX 980 Ti | ~170,000 | ~55 secs |
-| **GTX 1000** | GTX 1050 Ti | ~80,000 | ~118 secs |
-| | GTX 1060 | ~140,000 | ~67 secs |
-| | GTX 1070 | ~220,000 | ~43 secs |
-| | GTX 1080 Ti | ~400,000 | ~23 secs |
-| **RTX 2000** | RTX 2060 | ~420,000 | ~22 secs |
-| | RTX 2070 | ~540,000 | ~17 secs |
-| | RTX 2080 Ti | ~880,000 | ~10 secs |
-| **RTX 3000** | RTX 3050 | ~300,000 | ~31 secs |
-| | RTX 3060 | ~450,000 | ~21 secs |
-| | RTX 3060 Ti | ~580,000 | ~16 secs |
+| CPU | 4-core Intel/AMD | ~2,000 | ~71 mins |
+| iGPU | AMD Radeon Graphics (My Device) | ~31,000 | ~4.6 mins |
+| **GTX 900** | GTX 960 | ~75,000 | ~114 secs |
+| | GTX 970 | ~110,000 | ~77 secs |
+| | GTX 980 Ti | ~170,000 | ~50 secs |
+| **GTX 1000** | GTX 1050 Ti | ~80,000 | ~106 secs |
+| | GTX 1060 | ~140,000 | ~61 secs |
+| | GTX 1070 | ~220,000 | ~39 secs |
+| | GTX 1080 Ti | ~400,000 | ~21 secs |
+| **RTX 2000** | RTX 2060 | ~420,000 | ~20 secs |
+| | RTX 2070 | ~540,000 | ~16 secs |
+| | RTX 2080 Ti | ~880,000 | ~9.7 secs |
+| **RTX 3000** | RTX 3050 | ~300,000 | ~28 secs |
+| | RTX 3060 | ~450,000 | ~19 secs |
+| | RTX 3060 Ti | ~580,000 | ~15 secs |
 | | RTX 3070 | ~680,000 | ~13 secs |
-| | RTX 3080 | ~1,050,000 | ~9 secs |
-| | RTX 3090 | ~1,250,000 | ~7.6 secs |
-| **RTX 4000** | RTX 4050 (Laptop) | ~320,000 | ~29 secs |
-| | RTX 4060 | ~460,000 | ~20 secs |
-| | RTX 4060 Ti | ~600,000 | ~15 secs |
-| | RTX 4070 | ~820,000 | ~11 secs |
-| | RTX 4070 Ti | ~1,100,000 | ~8.6 secs |
-| | RTX 4080 | ~1,600,000 | ~5.9 secs |
-| | RTX 4090 | ~2,500,000 | ~3.8 secs |
-| **RTX 5000** | RTX 5060 | ~700,000* | ~13 secs |
-| | RTX 5070 Ti | ~1,556,000 | ~6.1 secs |
-| | RTX 5080 | ~2,200,000* | ~4.3 secs |
-| | RTX 5090 | ~3,500,000* | ~2.7 secs |
+| | RTX 3080 | ~1,050,000 | ~8.1 secs |
+| | RTX 3090 | ~1,250,000 | ~6.8 secs |
+| **RTX 4000** | RTX 4050 (Laptop) | ~320,000 | ~27 secs |
+| | RTX 4060 | ~460,000 | ~19 secs |
+| | RTX 4060 Ti | ~600,000 | ~14 secs |
+| | RTX 4070 | ~820,000 | ~10 secs |
+| | RTX 4070 Ti | ~1,100,000 | ~7.7 secs |
+| | RTX 4080 | ~1,600,000 | ~5.3 secs |
+| | RTX 4090 | ~2,500,000 | ~3.4 secs |
+| **RTX 5000** | RTX 5060 | ~700,000* | ~12 secs |
+| | RTX 5070 Ti | ~1,556,000 | ~5.5 secs |
+| | RTX 5080 | ~2,200,000* | ~3.9 secs |
+| | RTX 5090 | ~3,500,000* | ~2.4 secs |
 
 *\*Estimated based on architectural improvements.*
 </details>
@@ -93,11 +94,11 @@ The program auto-installs all dependencies on first run. No manual setup require
 3. **Wordlist selection** — You'll be prompted:
    ```
    Wordlist Selection
-     1. Use default wordlist (wifite.txt)
+     1. Use default wordlist (wifi-wordlist.txt)
      2. Use custom wordlist file
      Choose [1/2] (default: 1):
    ```
-   - **Option 1** — Uses the auto-downloaded default wordlist
+   - **Option 1** — Uses the auto-downloaded default wordlist (8.5M curated passwords)
    - **Option 2** — Enter a path to your own wordlist file (TAB completion supported)
 4. The program validates handshakes, cracks them **(GPU via hashcat by default, CPU via aircrack-ng only if hashcat fails)**, and saves results to `cracked_results/`
 
@@ -116,7 +117,7 @@ Handshake 1 Path: /path/to/your/file.cap
 handshakeCracker/
 ├── main.py              # Entry point
 ├── requirements.txt     # Python dependencies
-├── wifite.txt           # Auto-downloaded default wordlist
+├── wifi-wordlist.txt    # Auto-downloaded default wordlist (8.5M passwords)
 ├── handshakes/          # Place .cap/.pcap files here
 ├── cracked_results/     # Cracked passwords saved here
 ├── bin/                 # Auto-populated aircrack-ng & hashcat binaries
