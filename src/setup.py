@@ -7,9 +7,16 @@ from rich.text import Text
 
 from src.console import console, colored_log, log_error, log_debug
 from src.config import (
-    HANDSHAKES_DIR, RESULTS_DIR, WORDLIST_NAME, WORDLIST_URL,
-    AIRCRACK_WIN_URL, BIN_DIR, DEPS_DIR, AIRCRACK_ZIP_NAME, AIRCRACK_WIN_SHA256,
-    HCOV_DIR
+    HANDSHAKES_DIR,
+    RESULTS_DIR,
+    WORDLIST_NAME,
+    WORDLIST_URL,
+    AIRCRACK_WIN_URL,
+    BIN_DIR,
+    DEPS_DIR,
+    AIRCRACK_ZIP_NAME,
+    AIRCRACK_WIN_SHA256,
+    HCOV_DIR,
 )
 from src.utils import download_wordlist, download_and_extract_zip, extract_local_zip
 from src.bootstrap import pip_install_requirements
@@ -24,6 +31,7 @@ def _find_exe_in_path(exe: str) -> str | None:
 
 
 _aircrack_path_cache = None
+
 
 def _find_aircrack_anywhere() -> str | None:
     global _aircrack_path_cache
@@ -108,10 +116,7 @@ def ensure_aircrack() -> bool:
 
             colored_log("info", f"Installing aircrack-ng: {' '.join(cmd)}")
             try:
-                subprocess.run(
-                    cmd,
-                    check=True, capture_output=True, text=True, timeout=120
-                )
+                subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
                 colored_log("success", "aircrack-ng installed.")
                 found = _find_aircrack_anywhere()
                 if found:
@@ -160,12 +165,8 @@ def ensure_directories() -> bool:
             else:
                 colored_log("warning", f"Cannot create directory: {directory}")
 
-
     try:
-        has_cap = any(
-            f.lower().endswith(('.cap', '.pcap'))
-            for f in os.listdir(HANDSHAKES_DIR)
-        )
+        has_cap = any(f.lower().endswith((".cap", ".pcap")) for f in os.listdir(HANDSHAKES_DIR))
     except OSError:
         has_cap = False
     if not has_cap:
@@ -175,9 +176,7 @@ def ensure_directories() -> bool:
 
 
 def ensure_wordlist() -> bool:
-    wordlist_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_NAME
-    )
+    wordlist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_NAME)
     if os.path.exists(wordlist_path):
         return True
 
@@ -198,6 +197,7 @@ def ensure_python_dependencies() -> bool:
         import rich  # noqa: F401
         import prompt_toolkit  # noqa: F401
         import scapy  # noqa: F401
+
         return True
     except ImportError:
         pass
@@ -235,10 +235,7 @@ def ensure_p7zip() -> bool:
 
         colored_log("info", f"Installing p7zip: {' '.join(cmd)}")
         try:
-            subprocess.run(
-                cmd,
-                check=True, capture_output=True, text=True, timeout=120
-            )
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
             colored_log("success", "p7zip installed.")
             return True
         except subprocess.TimeoutExpired:
@@ -263,6 +260,7 @@ def auto_setup() -> dict:
     ensure_p7zip()
     try:
         from src.hashcat import ensure_hashcat
+
         hashcat_ok = ensure_hashcat()
     except Exception as e:
         log_debug(f"auto_setup: hashcat setup skipped ({e})")
@@ -274,6 +272,7 @@ def auto_setup() -> dict:
     if hashcat_ok:
         try:
             from src.gpu import detect_gpu
+
             gpu_name, gpu_is_discrete = detect_gpu()
         except Exception as e:
             log_debug(f"auto_setup: GPU detection skipped ({e})")

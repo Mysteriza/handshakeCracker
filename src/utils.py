@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import os
 import re
 import sys
@@ -12,11 +13,12 @@ from src.console import colored_log, log_error
 
 def strip_capture_extension(path: str) -> str:
     base = os.path.basename(path)
-    if base.lower().endswith('.cap'):
+    if base.lower().endswith(".cap"):
         return base[:-4]
-    if base.lower().endswith('.pcap'):
+    if base.lower().endswith(".pcap"):
         return base[:-5]
     return base
+
 
 def lower_process_priority(pid: int):
     system = platform.system()
@@ -38,11 +40,12 @@ def lower_process_priority(pid: int):
 def sanitize_ssid(ssid: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", ssid).strip().replace(" ", "_")
 
+
 def count_wordlist_lines(path: str) -> int:
     """Count lines in a wordlist file efficiently (1 MB buffer chunks)."""
     try:
-        with open(path, 'rb') as f:
-            return sum(chunk.count(b'\n') for chunk in iter(lambda: f.read(1024 * 1024), b''))
+        with open(path, "rb") as f:
+            return sum(chunk.count(b"\n") for chunk in iter(lambda: f.read(1024 * 1024), b""))
     except OSError:
         return 0
 
@@ -65,11 +68,12 @@ def scan_default_directory(directory_path: str) -> list[str]:
     return found_files
 
 
-
 import hashlib
+
 
 def download_with_progress(url: str, dest: str, label: str = "Downloading", expected_sha256: str | None = None) -> bool:
     try:
+
         def report(block_count, block_size, total_size):
             downloaded = block_count * block_size / (1024 * 1024)
             total = total_size / (1024 * 1024)
@@ -82,12 +86,15 @@ def download_with_progress(url: str, dest: str, label: str = "Downloading", expe
         if expected_sha256:
             sys.stdout.write(f"Verifying checksum for {label}...\n")
             hasher = hashlib.sha256()
-            with open(dest, 'rb') as f:
+            with open(dest, "rb") as f:
                 for chunk in iter(lambda: f.read(4096), b""):
                     hasher.update(chunk)
             actual_sha256 = hasher.hexdigest().upper()
             if actual_sha256 != expected_sha256.upper():
-                colored_log("error", f"Checksum verification failed for {label}! Expected {expected_sha256}, got {actual_sha256}.")
+                colored_log(
+                    "error",
+                    f"Checksum verification failed for {label}! Expected {expected_sha256}, got {actual_sha256}.",
+                )
                 os.unlink(dest)
                 return False
             colored_log("success", "Checksum verified successfully.")
@@ -107,19 +114,19 @@ def extract_local_zip(zip_path: str, extract_to: str, subdir: str | None = None)
         colored_log("info", f"Extracting {os.path.basename(zip_path)}...")
         os.makedirs(extract_to, exist_ok=True)
 
-        with zipfile.ZipFile(zip_path, 'r') as zf:
+        with zipfile.ZipFile(zip_path, "r") as zf:
             for member in zf.namelist():
                 if subdir and not member.startswith(subdir):
                     continue
-                rel_path = member[len(subdir):].lstrip('/') if subdir else member
+                rel_path = member[len(subdir) :].lstrip("/") if subdir else member
                 if not rel_path:
                     continue
                 target = os.path.join(extract_to, rel_path)
-                if member.endswith('/'):
+                if member.endswith("/"):
                     os.makedirs(target, exist_ok=True)
                 else:
                     os.makedirs(os.path.dirname(target), exist_ok=True)
-                    with zf.open(member) as src, open(target, 'wb') as dst:
+                    with zf.open(member) as src, open(target, "wb") as dst:
                         dst.write(src.read())
 
         colored_log("success", f"Extracted '{os.path.basename(zip_path)}'.")
@@ -148,12 +155,14 @@ def download_wordlist(url: str, dest: str) -> bool:
     return False
 
 
-def download_and_extract_zip(url: str, extract_to: str, subdir: str | None = None, expected_sha256: str | None = None) -> bool:
+def download_and_extract_zip(
+    url: str, extract_to: str, subdir: str | None = None, expected_sha256: str | None = None
+) -> bool:
     tmp_path = None
     try:
         colored_log("info", "Downloading aircrack-ng for Windows...")
         colored_log("info", "The aircrack-ng server can be slow; this may take a few minutes.")
-        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp_path = tmp.name
 
         if not download_with_progress(url, tmp_path, "Downloading aircrack-ng", expected_sha256):
@@ -181,15 +190,14 @@ from prompt_toolkit.shortcuts import PromptSession
 from prompt_toolkit.completion import PathCompleter
 from src.console import console
 
+
 class PcapValidator(Validator):
     def validate(self, document):
         text = document.text
         if text.lower() in ("q", "done"):
             return
         if not os.path.exists(text):
-            raise ValidationError(
-                message=f"File not found: {text}", cursor_position=len(text)
-            )
+            raise ValidationError(message=f"File not found: {text}", cursor_position=len(text))
         if not (text.lower().endswith(".cap") or text.lower().endswith(".pcap")):
             raise ValidationError(
                 message=f"Not a .cap or .pcap file: {text}",
@@ -199,14 +207,11 @@ class PcapValidator(Validator):
 
 class WordlistValidator(Validator):
     def validate(self, document):
-        text = document.text.strip().strip('"\'')
+        text = document.text.strip().strip("\"'")
         if not text:
             raise ValidationError(message="Path cannot be empty.", cursor_position=0)
         if not os.path.isfile(text):
-            raise ValidationError(
-                message=f"File not found: {text}", cursor_position=len(text)
-            )
-
+            raise ValidationError(message=f"File not found: {text}", cursor_position=len(text))
 
 
 def choose_wordlist(session: PromptSession, default_path: str) -> str:
@@ -232,7 +237,7 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
                     validator=WordlistValidator(),
                     validate_while_typing=True,
                 ).strip()
-                custom_path = raw_path.strip('"\'')
+                custom_path = raw_path.strip("\"'")
                 break
             except ValidationError as e:
                 colored_log("error", str(e))
@@ -254,26 +259,19 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
     return default_path
 
 
-
 def get_manual_handshake_paths(session: PromptSession) -> list[str]:
     manual_queue = []
     console.print("\nPlease enter handshake file paths (.cap/.pcap) one by one.")
-    console.print(
-        "(Type 'done' or 'q' to finish adding files. "
-        "Use TAB for auto-completion.)"
-    )
+    console.print("(Type 'done' or 'q' to finish adding files. Use TAB for auto-completion.)")
 
     while True:
         try:
-            current_input_path = (
-                session.prompt(
-                    f"Handshake {len(manual_queue) + 1} Path: ",
-                    completer=PathCompleter(only_directories=False, expanduser=True),
-                    validator=PcapValidator(),
-                    validate_while_typing=True,
-                )
-                .strip()
-            )
+            current_input_path = session.prompt(
+                f"Handshake {len(manual_queue) + 1} Path: ",
+                completer=PathCompleter(only_directories=False, expanduser=True),
+                validator=PcapValidator(),
+                validate_while_typing=True,
+            ).strip()
 
             if current_input_path.lower() in ("done", "q"):
                 break
@@ -293,8 +291,6 @@ def get_manual_handshake_paths(session: PromptSession) -> list[str]:
             log_error("Error during manual handshake file input.", e)
             colored_log(
                 "error",
-                "An error occurred during file path input. "
-                "Please try again or restart.",
+                "An error occurred during file path input. Please try again or restart.",
             )
             time.sleep(1)
-

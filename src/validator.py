@@ -37,6 +37,7 @@ class ValidationResult:
     error: str | None = None
     relevant_packets: list[Any] = field(default_factory=list)
 
+
 def validate_handshake(filepath: str) -> ValidationResult:
     result = ValidationResult()
     try:

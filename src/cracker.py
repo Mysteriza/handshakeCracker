@@ -30,7 +30,7 @@ def get_already_cracked_essids() -> set[str]:
     return cracked_essids
 
 
-_SPINNER = ['-', '\\', '|', '/']
+_SPINNER = ["-", "\\", "|", "/"]
 _active_procs: list[subprocess.Popen] = []
 _active_procs_lock = threading.Lock()
 _cached_chunks: dict[str, list[str]] = {}
@@ -49,6 +49,7 @@ def _terminate_all():
             except Exception:
                 pass
         _active_procs.clear()
+
 
 def _cleanup_chunks():
     for paths in _cached_chunks.values():
@@ -85,13 +86,18 @@ def _crack_worker(chunk_path: str, handshake_path: str, results: list):
     try:
         proc = subprocess.Popen(
             ["aircrack-ng", "-w", chunk_path, handshake_path],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding='utf-8', errors='replace',
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except OSError as e:
-        if getattr(e, 'winerror', None) == 225:
+        if getattr(e, "winerror", None) == 225:
             _clear_status()
-            console.print("  Windows Defender blocked aircrack-ng.exe. Add an exclusion in Windows Security, then re-run.")
+            console.print(
+                "  Windows Defender blocked aircrack-ng.exe. Add an exclusion in Windows Security, then re-run."
+            )
         else:
             _clear_status()
             console.print(f"  Failed to launch aircrack-ng: {e}")
@@ -112,9 +118,7 @@ def _crack_worker(chunk_path: str, handshake_path: str, results: list):
 
 
 class AircrackBackend(CrackerBackend):
-    def crack(
-        self, handshake_path: str, wordlist_path: str, display_essid: str
-    ) -> str | None:
+    def crack(self, handshake_path: str, wordlist_path: str, display_essid: str) -> str | None:
         chunk_paths: list[str] = []
         try:
             messages = [
@@ -144,10 +148,10 @@ class AircrackBackend(CrackerBackend):
 
                 chunk_size_bytes = math.ceil(wl_size / n)
 
-                with open(wordlist_path, 'rb') as f:
+                with open(wordlist_path, "rb") as f:
                     for i in range(n):
                         cp = os.path.join(chunk_dir, f"chunk_{i}.txt")
-                        with open(cp, 'wb') as cf:
+                        with open(cp, "wb") as cf:
                             bytes_read = 0
                             while bytes_read < chunk_size_bytes:
                                 chunk = f.read(min(1024 * 1024, chunk_size_bytes - bytes_read))
@@ -157,7 +161,7 @@ class AircrackBackend(CrackerBackend):
                                 cf.write(chunk)
 
                             # Read until the next newline so we don't break passwords
-                            if bytes_read > 0 and chunk and not chunk.endswith(b'\n'):
+                            if bytes_read > 0 and chunk and not chunk.endswith(b"\n"):
                                 remainder = f.readline()
                                 cf.write(remainder)
                         paths.append(cp)
@@ -168,7 +172,8 @@ class AircrackBackend(CrackerBackend):
 
             for i, cp in enumerate(chunk_paths):
                 t = threading.Thread(
-                    target=_crack_worker, args=(cp, handshake_path, found_results),
+                    target=_crack_worker,
+                    args=(cp, handshake_path, found_results),
                     daemon=True,
                 )
                 t.start()
@@ -212,10 +217,7 @@ class AircrackBackend(CrackerBackend):
             if essid_match and essid_match.group(1).strip() not in ("", "<hidden>"):
                 final_essid = essid_match.group(1).strip()
             elif final_essid in ("<hidden>",) or final_essid.endswith("_from_filename"):
-                final_essid = (
-                    strip_capture_extension(handshake_path)
-                    + "_determined_final"
-                )
+                final_essid = strip_capture_extension(handshake_path) + "_determined_final"
 
             _clear_status()
             console.print(f"  Password: {password}")

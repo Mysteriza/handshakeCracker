@@ -1,5 +1,4 @@
 import os
-import platform
 import tempfile
 
 
@@ -8,8 +7,8 @@ def _find_writable_dir(preferred: str) -> str:
         base = preferred
     else:
         base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), preferred)
-    
-    parent = os.path.dirname(base) or '.'
+
+    parent = os.path.dirname(base) or "."
     if os.access(parent, os.W_OK):
         return base
 
@@ -25,8 +24,6 @@ BIN_DIR = _find_writable_dir("bin")
 
 HASHCAT_VERSION = "7.1.2"
 HASHCAT_URL = f"https://github.com/hashcat/hashcat/releases/download/v{HASHCAT_VERSION}/hashcat-{HASHCAT_VERSION}.7z"
-HASHCAT_DIR = os.path.join(BIN_DIR, f"hashcat-{HASHCAT_VERSION}")
-HASHCAT_EXE = "hashcat.exe" if platform.system() == "Windows" else "hashcat"
 HCOV_DIR = _find_writable_dir("hc22000_cache")
 
 DEPS_DIR = "dependencies"

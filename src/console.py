@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import sys
 import os
 import tempfile
@@ -10,6 +11,7 @@ def _enable_vt():
     try:
         if sys.platform == "win32":
             import ctypes
+
             kernel32 = ctypes.windll.kernel32
             STD_OUTPUT_HANDLE = -11
             ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
@@ -27,6 +29,7 @@ def _enable_vt():
 def _init_colorama():
     try:
         import colorama
+
         colorama.init()
         return True
     except Exception:
@@ -59,10 +62,11 @@ def _cleanup_old_logs(log_dir: str, max_logs: int = 10):
     """Keep only the latest `max_logs` debug_log files in `log_dir`."""
     try:
         import glob
+
         logs = glob.glob(os.path.join(log_dir, "debug_log_*.txt"))
         logs.sort(key=os.path.getmtime, reverse=True)
         # Delete logs that exceed the maximum minus one (since we are about to create a new one)
-        for old_log in logs[max_logs - 1:]:
+        for old_log in logs[max_logs - 1 :]:
             try:
                 os.remove(old_log)
             except OSError:
@@ -77,7 +81,7 @@ _log_dir = _get_log_dir()
 _cleanup_old_logs(_log_dir, max_logs=3)
 _log_file = os.path.join(_log_dir, f"debug_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
 
-_handler = logging.FileHandler(_log_file, encoding='utf-8')
+_handler = logging.FileHandler(_log_file, encoding="utf-8")
 _formatter = logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s", "%Y-%m-%d %H:%M:%S")
 _handler.setFormatter(_formatter)
 _logger.addHandler(_handler)

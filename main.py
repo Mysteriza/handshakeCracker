@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Wi-Fi Handshake Cracker — fully automated setup & cracking."""
+
+# ruff: noqa: E402
 import os
 import sys
 import subprocess
@@ -8,6 +10,7 @@ import signal
 # ── Phase 0: Auto-Update Check ─────────────────────────────────────────
 try:
     from src.updater import check_and_update
+
     check_and_update()
 except Exception:
     pass
@@ -40,8 +43,11 @@ from prompt_toolkit.history import InMemoryHistory
 from src.console import console, colored_log, log_error, log_debug
 from src.config import HANDSHAKES_DIR, WORDLIST_NAME
 from src.utils import (
-    choose_wordlist, scan_default_directory, get_manual_handshake_paths,
-    sanitize_ssid, strip_capture_extension
+    choose_wordlist,
+    scan_default_directory,
+    get_manual_handshake_paths,
+    sanitize_ssid,
+    strip_capture_extension,
 )
 from src.validator import validate_all_handshakes
 from src.cracker import get_already_cracked_essids, AircrackBackend
@@ -50,9 +56,8 @@ from src.setup import auto_setup
 from src.backend import CrackerBackend
 
 
-
-
 SEPARATOR = "-" * 60
+
 
 def main():
     try:
@@ -81,16 +86,16 @@ def main():
         else:
             colored_log("info", "Using aircrack-ng (CPU).")
 
-        log_debug(f"main: hashcat={'yes' if use_hashcat else 'no'}, "
-                  f"gpu_name={gpu_name}, "
-                  f"aircrack-ng={'yes' if setup.get('aircrack_available') else 'no'}")
+        log_debug(
+            f"main: hashcat={'yes' if use_hashcat else 'no'}, "
+            f"gpu_name={gpu_name}, "
+            f"aircrack-ng={'yes' if setup.get('aircrack_available') else 'no'}"
+        )
 
         session = PromptSession(history=InMemoryHistory())
 
         # ── Wordlist selection ─────────────────────────────────────────
-        default_wordlist = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME
-        )
+        default_wordlist = os.path.join(os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME)
         wordlist_path = choose_wordlist(session, default_wordlist)
 
         found_files = scan_default_directory(HANDSHAKES_DIR)
@@ -98,9 +103,7 @@ def main():
 
         if not found_files:
             console.print(f"No .cap/.pcap files found in '{HANDSHAKES_DIR}'.")
-            switch_to_manual = (
-                input("Switch to manual file entry? (y/N): ").strip().lower()
-            )
+            switch_to_manual = input("Switch to manual file entry? (y/N): ").strip().lower()
             if switch_to_manual == "y":
                 handshake_queue = get_manual_handshake_paths(session)
             else:
@@ -121,9 +124,7 @@ def main():
             sys.exit(0)
 
         handshake_queue = list(valid_files_map.keys())
-        console.print(
-            f"Processing {len(handshake_queue)} valid handshake(s)..."
-        )
+        console.print(f"Processing {len(handshake_queue)} valid handshake(s)...")
 
         already_cracked = get_already_cracked_essids()
         handshake_queue.sort(key=lambda p: os.path.getsize(p), reverse=True)
