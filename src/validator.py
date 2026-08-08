@@ -30,6 +30,7 @@ def _classify_eapol(ek) -> str | None:
 @dataclass
 class ValidationResult:
     is_valid: bool = False
+    has_pmkid: bool = False
     has_m1: bool = False
     has_m2: bool = False
     has_m3: bool = False
@@ -41,27 +42,37 @@ class ValidationResult:
 def validate_handshake(filepath: str) -> ValidationResult:
     result = ValidationResult()
     try:
-        with PcapReader(filepath) as pcap:
-            for pkt in pcap:
-                if pkt.haslayer(EAPOL_KEY):
-                    result.relevant_packets.append(pkt)
-                    ek = pkt[EAPOL_KEY]
-                    msg_type = _classify_eapol(ek)
-                    if msg_type == "M1":
+        if filepath.lower().endswith(".hc22000"):
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("WPA*01*"):
+                        result.has_pmkid = True
+                    elif line.startswith("WPA*02*"):
                         result.has_m1 = True
-                    elif msg_type == "M2":
                         result.has_m2 = True
-                    elif msg_type == "M3":
-                        result.has_m3 = True
-                    elif msg_type == "M4":
-                        result.has_m4 = True
-                elif pkt.haslayer(Dot11Beacon) or pkt.haslayer(Dot11ProbeResp):
-                    result.relevant_packets.append(pkt)
+        else:
+            with PcapReader(filepath) as pcap:
+                for pkt in pcap:
+                    if pkt.haslayer(EAPOL_KEY):
+                        result.relevant_packets.append(pkt)
+                        ek = pkt[EAPOL_KEY]
+                        msg_type = _classify_eapol(ek)
+                        if msg_type == "M1":
+                            result.has_m1 = True
+                        elif msg_type == "M2":
+                            result.has_m2 = True
+                        elif msg_type == "M3":
+                            result.has_m3 = True
+                        elif msg_type == "M4":
+                            result.has_m4 = True
+                    elif pkt.haslayer(Dot11Beacon) or pkt.haslayer(Dot11ProbeResp):
+                        result.relevant_packets.append(pkt)
     except Exception as e:
-        result.error = f"cannot read pcap: {e}"
+        result.error = f"cannot read file: {e}"
         return result
 
-    result.is_valid = result.has_m1 and result.has_m2
+    result.is_valid = (result.has_m1 and result.has_m2) or result.has_pmkid
     return result
 
 
@@ -82,7 +93,7 @@ def _row(cells: list[str], widths: list[int]) -> str:
 def validate_all_handshakes(file_list: list[str]) -> tuple[dict[str, ValidationResult], list[tuple[str, str]]]:
     if not file_list:
         return {}, []
-    console.print("\nValidating handshake files... (M1 + M2 is sufficient for validity)")
+    console.print("\nValidating handshake files... (M1+M2 or PMKID is sufficient for validity)")
 
     results = []
     for f in file_list:
@@ -92,9 +103,10 @@ def validate_all_handshakes(file_list: list[str]) -> tuple[dict[str, ValidationR
     name_width = max(len(os.path.basename(f)) for f, _ in results)
     name_width = max(name_width, 4)
     col_w = 4
-    widths = [name_width, col_w, col_w, col_w, col_w, 6]
+    col_pmkid = 5
+    widths = [name_width, col_pmkid, col_w, col_w, col_w, col_w, 6]
 
-    header = ["File", "M1", "M2", "M3", "M4", "Status"]
+    header = ["File", "PMKID", "M1", "M2", "M3", "M4", "Status"]
     rows = []
     valid = {}
     invalid = []
@@ -102,11 +114,12 @@ def validate_all_handshakes(file_list: list[str]) -> tuple[dict[str, ValidationR
     for f, v in results:
         basename = os.path.basename(f)
         if v.error:
-            cells = [basename, CROSS, CROSS, CROSS, CROSS, "ERROR"]
+            cells = [basename, CROSS, CROSS, CROSS, CROSS, CROSS, "ERROR"]
             invalid.append((f, v.error))
         else:
             cells = [
                 basename,
+                CHECK if v.has_pmkid else CROSS,
                 CHECK if v.has_m1 else CROSS,
                 CHECK if v.has_m2 else CROSS,
                 CHECK if v.has_m3 else CROSS,
@@ -116,7 +129,7 @@ def validate_all_handshakes(file_list: list[str]) -> tuple[dict[str, ValidationR
             if v.is_valid:
                 valid[f] = v
             else:
-                invalid.append((f, "missing M1 or M2"))
+                invalid.append((f, "missing M1/M2 or PMKID"))
         rows.append(cells)
 
     console.print(_hline(widths))

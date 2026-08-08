@@ -13,10 +13,13 @@ from src.console import colored_log, log_error
 
 def strip_capture_extension(path: str) -> str:
     base = os.path.basename(path)
-    if base.lower().endswith(".cap"):
+    lower = base.lower()
+    if lower.endswith(".cap"):
         return base[:-4]
-    if base.lower().endswith(".pcap"):
+    if lower.endswith(".pcap"):
         return base[:-5]
+    if lower.endswith(".hc22000"):
+        return base[:-8]
     return base
 
 
@@ -56,12 +59,12 @@ def scan_default_directory(directory_path: str) -> list[str]:
         colored_log("error", f"Default directory {directory_path} not found.")
         return []
 
-    colored_log("info", f"Scanning {directory_path}/ for .cap/.pcap files...")
+    colored_log("info", f"Scanning {directory_path}/ for .cap/.pcap/.hc22000 files...")
     # NOTE: Only scans the DIRECT directory, NOT sub-folders.
     # Handshake files in sub-folders are intentionally ignored.
     try:
         for entry in os.scandir(directory_path):
-            if entry.is_file() and entry.name.lower().endswith((".cap", ".pcap")):
+            if entry.is_file() and entry.name.lower().endswith((".cap", ".pcap", ".hc22000")):
                 found_files.append(entry.path)
     except OSError as e:
         log_error(f"Failed to scan {directory_path}", e)
