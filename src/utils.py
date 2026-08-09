@@ -1,12 +1,12 @@
 # ruff: noqa: E402
+import ctypes
 import os
+import platform
 import re
 import sys
 import tempfile
 import urllib.request
 import zipfile
-import ctypes
-import platform
 
 from src.console import colored_log, log_error
 
@@ -48,17 +48,20 @@ def count_wordlist_lines(path: str) -> int:
     """Count lines in a wordlist file efficiently (1 MB buffer chunks)."""
     try:
         with open(path, "rb") as f:
-            return sum(chunk.count(b"\n") for chunk in iter(lambda: f.read(1024 * 1024), b""))
+            return sum(
+                chunk.count(b"\n") for chunk in iter(lambda: f.read(1024 * 1024), b"")
+            )
     except OSError:
         return 0
 
 
 def scan_default_directory(directory_path: str) -> list[str]:
     found_files = []
-    
+
     # Try to restore first if directory is empty or missing
     try:
-        from src.backup import restore_from_backup, create_safe_backup
+        from src.backup import create_safe_backup, restore_from_backup
+
         restore_from_backup(directory_path)
     except Exception:
         pass
@@ -78,7 +81,9 @@ def scan_default_directory(directory_path: str) -> list[str]:
     # Handshake files in sub-folders are intentionally ignored.
     try:
         for entry in os.scandir(directory_path):
-            if entry.is_file() and entry.name.lower().endswith((".cap", ".pcap", ".hc22000")):
+            if entry.is_file() and entry.name.lower().endswith(
+                (".cap", ".pcap", ".hc22000")
+            ):
                 found_files.append(entry.path)
     except OSError as e:
         log_error(f"Failed to scan {directory_path}", e)
@@ -88,7 +93,9 @@ def scan_default_directory(directory_path: str) -> list[str]:
 import hashlib
 
 
-def download_with_progress(url: str, dest: str, label: str = "Downloading", expected_sha256: str | None = None) -> bool:
+def download_with_progress(
+    url: str, dest: str, label: str = "Downloading", expected_sha256: str | None = None
+) -> bool:
     try:
 
         def report(block_count, block_size, total_size):
@@ -126,7 +133,9 @@ def download_with_progress(url: str, dest: str, label: str = "Downloading", expe
         return False
 
 
-def extract_local_zip(zip_path: str, extract_to: str, subdir: str | None = None) -> bool:
+def extract_local_zip(
+    zip_path: str, extract_to: str, subdir: str | None = None
+) -> bool:
     try:
         colored_log("info", f"Extracting {os.path.basename(zip_path)}...")
         os.makedirs(extract_to, exist_ok=True)
@@ -173,16 +182,23 @@ def download_wordlist(url: str, dest: str) -> bool:
 
 
 def download_and_extract_zip(
-    url: str, extract_to: str, subdir: str | None = None, expected_sha256: str | None = None
+    url: str,
+    extract_to: str,
+    subdir: str | None = None,
+    expected_sha256: str | None = None,
 ) -> bool:
     tmp_path = None
     try:
         colored_log("info", "Downloading aircrack-ng for Windows...")
-        colored_log("info", "The aircrack-ng server can be slow; this may take a few minutes.")
+        colored_log(
+            "info", "The aircrack-ng server can be slow; this may take a few minutes."
+        )
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp_path = tmp.name
 
-        if not download_with_progress(url, tmp_path, "Downloading aircrack-ng", expected_sha256):
+        if not download_with_progress(
+            url, tmp_path, "Downloading aircrack-ng", expected_sha256
+        ):
             return False
 
         colored_log("info", "Extracting...")
@@ -190,7 +206,9 @@ def download_and_extract_zip(
 
     except Exception as e:
         log_error("Failed to download/extract aircrack-ng", e)
-        colored_log("error", "Failed to set up aircrack-ng. Check your internet connection.")
+        colored_log(
+            "error", "Failed to set up aircrack-ng. Check your internet connection."
+        )
         return False
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -202,9 +220,11 @@ def download_and_extract_zip(
 # ── Recovered UI Functions ──
 
 import time
-from prompt_toolkit.validation import Validator, ValidationError
-from prompt_toolkit.shortcuts import PromptSession
+
 from prompt_toolkit.completion import PathCompleter
+from prompt_toolkit.shortcuts import PromptSession
+from prompt_toolkit.validation import ValidationError, Validator
+
 from src.console import console
 
 
@@ -214,7 +234,9 @@ class PcapValidator(Validator):
         if text.lower() in ("q", "done"):
             return
         if not os.path.exists(text):
-            raise ValidationError(message=f"File not found: {text}", cursor_position=len(text))
+            raise ValidationError(
+                message=f"File not found: {text}", cursor_position=len(text)
+            )
         if not (text.lower().endswith(".cap") or text.lower().endswith(".pcap")):
             raise ValidationError(
                 message=f"Not a .cap or .pcap file: {text}",
@@ -228,7 +250,9 @@ class WordlistValidator(Validator):
         if not text:
             raise ValidationError(message="Path cannot be empty.", cursor_position=0)
         if not os.path.isfile(text):
-            raise ValidationError(message=f"File not found: {text}", cursor_position=len(text))
+            raise ValidationError(
+                message=f"File not found: {text}", cursor_position=len(text)
+            )
 
 
 def choose_wordlist(session: PromptSession, default_path: str) -> str:
@@ -244,7 +268,9 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
         colored_log("error", "Invalid choice. Enter 1 for default or 2 for custom.")
 
     if choice == "2":
-        console.print("  Example: C:\\Users\\You\\wordlist.txt  or  /home/user/wordlist.txt")
+        console.print(
+            "  Example: C:\\Users\\You\\wordlist.txt  or  /home/user/wordlist.txt"
+        )
         console.print("  Press TAB for auto-completion.")
         while True:
             try:
@@ -264,7 +290,10 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
 
         lines = count_wordlist_lines(custom_path)
         if lines:
-            colored_log("info", f"Custom wordlist loaded: {lines:,} passwords.".replace(",", "."))
+            colored_log(
+                "info",
+                f"Custom wordlist loaded: {lines:,} passwords.".replace(",", "."),
+            )
 
         return custom_path
 
@@ -279,7 +308,9 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
 def get_manual_handshake_paths(session: PromptSession) -> list[str]:
     manual_queue = []
     console.print("\nPlease enter handshake file paths (.cap/.pcap) one by one.")
-    console.print("(Type 'done' or 'q' to finish adding files. Use TAB for auto-completion.)")
+    console.print(
+        "(Type 'done' or 'q' to finish adding files. Use TAB for auto-completion.)"
+    )
 
     while True:
         try:

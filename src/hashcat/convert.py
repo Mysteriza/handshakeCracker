@@ -3,7 +3,8 @@ import os
 from scapy.all import PcapReader
 from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeResp
 from scapy.layers.eap import EAPOL, EAPOL_KEY
-from src.console import log_error, log_debug
+
+from src.console import log_debug, log_error
 from src.validator import _classify_eapol
 
 
@@ -33,19 +34,27 @@ def _extract_raw_eapol(pkt) -> bytes | None:
         return None
 
 
-def convert_cap_to_hc22000(cap_path: str, output_path: str, packets: list | None = None) -> bool:
+def convert_cap_to_hc22000(
+    cap_path: str, output_path: str, packets: list | None = None
+) -> bool:
     log_debug(f"convert_cap_to_hc22000: reading {cap_path}")
     if packets is None:
         try:
             packets = []
             with PcapReader(cap_path) as pcap:
                 for pkt in pcap:
-                    if pkt.haslayer(EAPOL_KEY) or pkt.haslayer(Dot11Beacon) or pkt.haslayer(Dot11ProbeResp):
+                    if (
+                        pkt.haslayer(EAPOL_KEY)
+                        or pkt.haslayer(Dot11Beacon)
+                        or pkt.haslayer(Dot11ProbeResp)
+                    ):
                         packets.append(pkt)
         except Exception as e:
             log_error(f"Failed to read {cap_path}", e)
             return False
-    log_debug(f"convert_cap_to_hc22000: loaded {len(packets)} relevant packet(s) from cap")
+    log_debug(
+        f"convert_cap_to_hc22000: loaded {len(packets)} relevant packet(s) from cap"
+    )
     essid = ""
     ap_mac = None
     sta_mac = None
@@ -76,7 +85,9 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str, packets: list | None
         msg = _classify_eapol(ek)
         if msg:
             frames[msg] = pkt
-    log_debug(f"convert_cap_to_hc22000: beacons={beacon_count} EAPOL frames found={list(frames.keys())}")
+    log_debug(
+        f"convert_cap_to_hc22000: beacons={beacon_count} EAPOL frames found={list(frames.keys())}"
+    )
     if "M2" not in frames:
         log_debug("convert_cap_to_hc22000: M2 not found in capture")
         return False
@@ -115,7 +126,9 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str, packets: list | None
     log_debug(
         f"convert_cap_to_hc22000: anonce_len={len(anonce or '')} snonce_len={len(snonce or '')} mic_len={len(mic or '')} key_ver={key_ver}"
     )
-    log_debug(f"convert_cap_to_hc22000: eapol_raw_bytes_len={len(eapol_raw_bytes or b'')}")
+    log_debug(
+        f"convert_cap_to_hc22000: eapol_raw_bytes_len={len(eapol_raw_bytes or b'')}"
+    )
     if not all([ap_mac, sta_mac, anonce, snonce, mic, key_ver]):
         log_debug(
             f"convert_cap_to_hc22000: validation failed - missing fields: ap={bool(ap_mac)} sta={bool(sta_mac)} anonce={bool(anonce)} snonce={bool(snonce)} mic={bool(mic)} kv={bool(key_ver)}"
@@ -127,14 +140,17 @@ def convert_cap_to_hc22000(cap_path: str, output_path: str, packets: list | None
     essid_hex = essid.encode("utf-8", errors="replace").hex()
     if len(eapol_raw_bytes) < 81 + 16:
         log_error(
-            "convert_cap_to_hc22000: EAPOL frame too short for MIC zeroing", Exception(f"len={len(eapol_raw_bytes)}")
+            "convert_cap_to_hc22000: EAPOL frame too short for MIC zeroing",
+            Exception(f"len={len(eapol_raw_bytes)}"),
         )
         return False
     eapol_bytes = bytearray(eapol_raw_bytes)
     orig_mic = bytes(eapol_bytes[81:97]).hex()
     eapol_bytes[81:97] = b"\x00" * 16
     eapol_hex = bytes(eapol_bytes).hex()
-    log_debug(f"convert_cap_to_hc22000: zeroed MIC in EAPOL frame original_mic_start={orig_mic[:16]}...")
+    log_debug(
+        f"convert_cap_to_hc22000: zeroed MIC in EAPOL frame original_mic_start={orig_mic[:16]}..."
+    )
 
     ap_mac_no_colon = ap_mac.replace(":", "")
     sta_mac_no_colon = sta_mac.replace(":", "")

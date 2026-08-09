@@ -1,8 +1,8 @@
 # ruff: noqa: E402
-import sys
-import os
-import tempfile
 import logging
+import os
+import sys
+import tempfile
 
 from rich.console import Console
 
@@ -79,10 +79,14 @@ from datetime import datetime
 
 _log_dir = _get_log_dir()
 _cleanup_old_logs(_log_dir, max_logs=3)
-_log_file = os.path.join(_log_dir, f"debug_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+_log_file = os.path.join(
+    _log_dir, f"debug_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+)
 
 _handler = logging.FileHandler(_log_file, encoding="utf-8")
-_formatter = logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s", "%Y-%m-%d %H:%M:%S")
+_formatter = logging.Formatter(
+    "[%(asctime)s] %(levelname)s: %(message)s", "%Y-%m-%d %H:%M:%S"
+)
 _handler.setFormatter(_formatter)
 _logger.addHandler(_handler)
 
@@ -91,6 +95,14 @@ def colored_log(level: str, message: str):
     markers = {"info": " *", "success": " +", "warning": " !", "error": " -"}
     prefix = markers.get(level, "  ")
     console.print(f"{prefix} {message}")
+
+    # Also write to debug log
+    if level == "error":
+        _logger.error(message)
+    elif level == "warning":
+        _logger.warning(message)
+    else:
+        _logger.info(message)
 
 
 def log_debug(message: str, data=None):

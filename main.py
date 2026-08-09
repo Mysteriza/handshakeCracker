@@ -3,9 +3,9 @@
 
 # ruff: noqa: E402
 import os
-import sys
-import subprocess
 import signal
+import subprocess
+import sys
 
 # ── Phase 0: Auto-Update Check ─────────────────────────────────────────
 try:
@@ -16,13 +16,15 @@ except Exception:
     pass
 
 # ── Phase 1: Auto-install Python dependencies ──────────────────────────
-_REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements.txt")
+_REQUIREMENTS = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "requirements.txt"
+)
 
 from src.bootstrap import pip_install_requirements as _pip_install_requirements
 
 try:
-    import rich  # noqa: F401
     import prompt_toolkit  # noqa: F401
+    import rich  # noqa: F401
     import scapy  # noqa: F401
 except ImportError:
     print("Required Python libraries not found. Installing...")
@@ -32,29 +34,26 @@ except ImportError:
     else:
         print("Failed to install required libraries.")
         print(f"Try manually: pip install --user -r {_REQUIREMENTS}")
-        print(f"Or with override: pip install --break-system-packages -r {_REQUIREMENTS}")
+        print(
+            f"Or with override: pip install --break-system-packages -r {_REQUIREMENTS}"
+        )
         sys.exit(1)
 
 # ── Phase 2: Project imports ───────────────────────────────────────────
 
-from prompt_toolkit.shortcuts import PromptSession
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.shortcuts import PromptSession
 
-from src.console import console, colored_log, log_error, log_debug
-from src.config import HANDSHAKES_DIR, WORDLIST_NAME
-from src.utils import (
-    choose_wordlist,
-    scan_default_directory,
-    get_manual_handshake_paths,
-    sanitize_ssid,
-    strip_capture_extension,
-)
-from src.validator import validate_all_handshakes
-from src.cracker import get_already_cracked_essids, AircrackBackend
-from src.hashcat import HashcatBackend, HASHCAT_EXHAUSTED
-from src.setup import auto_setup
 from src.backend import CrackerBackend
-
+from src.config import HANDSHAKES_DIR, WORDLIST_NAME
+from src.console import colored_log, console, log_debug, log_error
+from src.cracker import AircrackBackend, get_already_cracked_essids
+from src.hashcat import HASHCAT_EXHAUSTED, HashcatBackend
+from src.setup import auto_setup
+from src.utils import (choose_wordlist, get_manual_handshake_paths,
+                       sanitize_ssid, scan_default_directory,
+                       strip_capture_extension)
+from src.validator import validate_all_handshakes
 
 SEPARATOR = "-" * 60
 
@@ -78,7 +77,9 @@ def main():
 
         if use_hashcat and gpu_name:
             gpu_type = "Discrete" if setup.get("gpu_is_discrete") else "Integrated"
-            colored_log("info", f"GPU detected: {gpu_name} ({gpu_type}) — using hashcat (GPU).")
+            colored_log(
+                "info", f"GPU detected: {gpu_name} ({gpu_type}) — using hashcat (GPU)."
+            )
         elif use_hashcat:
             colored_log("info", "Using hashcat (GPU/OpenCL).")
         else:
@@ -93,7 +94,9 @@ def main():
         session = PromptSession(history=InMemoryHistory())
 
         # ── Wordlist selection ─────────────────────────────────────────
-        default_wordlist = os.path.join(os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME)
+        default_wordlist = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), WORDLIST_NAME
+        )
         wordlist_path = choose_wordlist(session, default_wordlist)
 
         found_files = scan_default_directory(HANDSHAKES_DIR)
@@ -101,7 +104,9 @@ def main():
 
         if not found_files:
             console.print(f"No .cap/.pcap files found in '{HANDSHAKES_DIR}'.")
-            switch_to_manual = input("Switch to manual file entry? (y/N): ").strip().lower()
+            switch_to_manual = (
+                input("Switch to manual file entry? (y/N): ").strip().lower()
+            )
             if switch_to_manual == "y":
                 handshake_queue = get_manual_handshake_paths(session)
             else:
@@ -109,7 +114,10 @@ def main():
                 sys.exit(0)
         else:
             handshake_queue.extend(found_files)
-            colored_log("info", f"Found {len(found_files)} .cap/.pcap file(s) in '{HANDSHAKES_DIR}'.")
+            colored_log(
+                "info",
+                f"Found {len(found_files)} .cap/.pcap file(s) in '{HANDSHAKES_DIR}'.",
+            )
 
         if not handshake_queue:
             colored_log("warning", "No handshake files to process. Exiting.")
@@ -170,7 +178,9 @@ def main():
                 log_debug(f"main: fallback aircrack-ng returned {cracked!r}")
             elif cracked == HASHCAT_EXHAUSTED:
                 cracked = None
-                colored_log("warning", "Password not found in wordlist. Try a larger wordlist.")
+                colored_log(
+                    "warning", "Password not found in wordlist. Try a larger wordlist."
+                )
 
             if cracked:
                 console.print("  [green]Done.[/green]")
@@ -182,7 +192,9 @@ def main():
         console.print("Program finished. Exiting.\n")
 
     except KeyboardInterrupt:
-        colored_log("warning", "Program interrupted by user (Ctrl+C). Exiting gracefully.")
+        colored_log(
+            "warning", "Program interrupted by user (Ctrl+C). Exiting gracefully."
+        )
         sys.exit(1)
     except Exception as e:
         log_error("A critical unhandled error occurred in main execution.", e)

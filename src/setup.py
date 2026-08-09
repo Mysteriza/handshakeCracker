@@ -5,21 +5,14 @@ import subprocess
 from rich.panel import Panel
 from rich.text import Text
 
-from src.console import console, colored_log, log_error, log_debug
-from src.config import (
-    HANDSHAKES_DIR,
-    RESULTS_DIR,
-    WORDLIST_NAME,
-    WORDLIST_URL,
-    AIRCRACK_WIN_URL,
-    BIN_DIR,
-    DEPS_DIR,
-    AIRCRACK_ZIP_NAME,
-    AIRCRACK_WIN_SHA256,
-    HCOV_DIR,
-)
-from src.utils import download_wordlist, download_and_extract_zip, extract_local_zip
 from src.bootstrap import pip_install_requirements
+from src.config import (AIRCRACK_WIN_SHA256, AIRCRACK_WIN_URL,
+                        AIRCRACK_ZIP_NAME, BIN_DIR, DEPS_DIR, HANDSHAKES_DIR,
+                        HCOV_DIR, RESULTS_DIR, WORDLIST_ETAG_FILE,
+                        WORDLIST_NAME, WORDLIST_URL)
+from src.console import colored_log, console, log_debug, log_error
+from src.utils import (download_and_extract_zip, download_wordlist,
+                       extract_local_zip)
 
 
 def _find_exe_in_path(exe: str) -> str | None:
@@ -53,8 +46,18 @@ def _find_aircrack_anywhere() -> str | None:
 
     if system == "Windows":
         local_paths += [
-            os.path.join(os.environ.get("PROGRAMFILES", "C:\\Program Files"), "aircrack-ng", "bin", exe),
-            os.path.join(os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)"), "aircrack-ng", "bin", exe),
+            os.path.join(
+                os.environ.get("PROGRAMFILES", "C:\\Program Files"),
+                "aircrack-ng",
+                "bin",
+                exe,
+            ),
+            os.path.join(
+                os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)"),
+                "aircrack-ng",
+                "bin",
+                exe,
+            ),
             os.path.join(os.environ.get("LOCALAPPDATA", ""), "aircrack-ng", "bin", exe),
         ]
 
@@ -84,7 +87,9 @@ def ensure_aircrack() -> bool:
             root = os.path.dirname(os.path.abspath(__file__))
             bin_path = os.path.abspath(os.path.join(root, "..", BIN_DIR))
 
-            local_zip = os.path.abspath(os.path.join(root, "..", DEPS_DIR, AIRCRACK_ZIP_NAME))
+            local_zip = os.path.abspath(
+                os.path.join(root, "..", DEPS_DIR, AIRCRACK_ZIP_NAME)
+            )
             if os.path.isfile(local_zip):
                 colored_log("info", "Found local aircrack-ng ZIP.")
                 if extract_local_zip(local_zip, bin_path, "aircrack-ng-1.7-win/bin"):
@@ -94,7 +99,12 @@ def ensure_aircrack() -> bool:
                         return True
                 colored_log("warning", "Local ZIP extraction failed — trying download.")
 
-            if download_and_extract_zip(AIRCRACK_WIN_URL, bin_path, "aircrack-ng-1.7-win/bin", AIRCRACK_WIN_SHA256):
+            if download_and_extract_zip(
+                AIRCRACK_WIN_URL,
+                bin_path,
+                "aircrack-ng-1.7-win/bin",
+                AIRCRACK_WIN_SHA256,
+            ):
                 found = _find_aircrack_anywhere()
                 if found:
                     _add_parent_to_path(found)
@@ -111,19 +121,27 @@ def ensure_aircrack() -> bool:
             elif has_pacman:
                 cmd = ["sudo", "pacman", "-S", "--noconfirm", "aircrack-ng"]
             else:
-                colored_log("error", "Unsupported package manager. Install manually: aircrack-ng")
+                colored_log(
+                    "error",
+                    "Unsupported package manager. Install manually: aircrack-ng",
+                )
                 return False
 
             colored_log("info", f"Installing aircrack-ng: {' '.join(cmd)}")
             try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+                subprocess.run(
+                    cmd, check=True, capture_output=True, text=True, timeout=120
+                )
                 colored_log("success", "aircrack-ng installed.")
                 found = _find_aircrack_anywhere()
                 if found:
                     _add_parent_to_path(found)
                     return True
             except subprocess.TimeoutExpired:
-                colored_log("error", f"Instalasi butuh sudo password, jalankan manual: {' '.join(cmd)}")
+                colored_log(
+                    "error",
+                    f"Instalasi butuh sudo password, jalankan manual: {' '.join(cmd)}",
+                )
                 return False
             except (subprocess.CalledProcessError, FileNotFoundError):
                 pass
@@ -132,7 +150,9 @@ def ensure_aircrack() -> bool:
             return False
 
         else:
-            colored_log("error", f"Unsupported OS: {system}. Install aircrack-ng manually.")
+            colored_log(
+                "error", f"Unsupported OS: {system}. Install aircrack-ng manually."
+            )
             return False
 
     except Exception as e:
@@ -166,7 +186,9 @@ def ensure_directories() -> bool:
                 colored_log("warning", f"Cannot create directory: {directory}")
 
     try:
-        has_cap = any(f.lower().endswith((".cap", ".pcap")) for f in os.listdir(HANDSHAKES_DIR))
+        has_cap = any(
+            f.lower().endswith((".cap", ".pcap")) for f in os.listdir(HANDSHAKES_DIR)
+        )
     except OSError:
         has_cap = False
     if not has_cap:
@@ -176,26 +198,64 @@ def ensure_directories() -> bool:
 
 
 def ensure_wordlist() -> bool:
-    wordlist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_NAME)
-    if os.path.exists(wordlist_path):
-        return True
+    wordlist_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_NAME
+    )
+    etag_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_ETAG_FILE
+    )
 
-    if download_wordlist(WORDLIST_URL, wordlist_path):
-        return True
+    import urllib.request
+
+    colored_log("info", "Checking for wordlist updates...")
+    try:
+        req = urllib.request.Request(WORDLIST_URL, method="HEAD")
+        with urllib.request.urlopen(req, timeout=10) as response:
+            remote_etag = response.headers.get("ETag")
+
+        local_etag = None
+        if os.path.exists(etag_path):
+            with open(etag_path, "r") as f:
+                local_etag = f.read().strip()
+
+        if (
+            os.path.exists(wordlist_path)
+            and local_etag == remote_etag
+            and remote_etag is not None
+        ):
+            colored_log("success", "Wordlist is up to date.")
+            return True
+
+        colored_log("info", "New wordlist version found or missing, downloading...")
+        if download_wordlist(WORDLIST_URL, wordlist_path):
+            if remote_etag:
+                with open(etag_path, "w") as f:
+                    f.write(remote_etag)
+            return True
+
+    except Exception as e:
+        colored_log("warning", f"Failed to check for wordlist updates: {e}")
+        # Fallback to checking if file exists
+        if os.path.exists(wordlist_path):
+            return True
 
     return False
 
 
 def ensure_python_dependencies() -> bool:
     """Install required Python packages from requirements.txt if missing."""
-    req_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "requirements.txt")
+    req_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "requirements.txt"
+    )
     if not os.path.isfile(req_path):
-        colored_log("warning", "requirements.txt not found, skipping Python dependency check.")
+        colored_log(
+            "warning", "requirements.txt not found, skipping Python dependency check."
+        )
         return True
 
     try:
-        import rich  # noqa: F401
         import prompt_toolkit  # noqa: F401
+        import rich  # noqa: F401
         import scapy  # noqa: F401
 
         return True
@@ -210,7 +270,10 @@ def ensure_python_dependencies() -> bool:
 
     log_error("Failed to install Python dependencies")
     colored_log("error", "Install manually: pip install --user -r requirements.txt")
-    colored_log("info", "Or if blocked by PEP 668: pip install --break-system-packages -r requirements.txt")
+    colored_log(
+        "info",
+        "Or if blocked by PEP 668: pip install --break-system-packages -r requirements.txt",
+    )
     return False
 
 
@@ -239,10 +302,15 @@ def ensure_p7zip() -> bool:
             colored_log("success", "p7zip installed.")
             return True
         except subprocess.TimeoutExpired:
-            colored_log("error", f"Instalasi butuh sudo password, jalankan manual: {' '.join(cmd)}")
+            colored_log(
+                "error",
+                f"Instalasi butuh sudo password, jalankan manual: {' '.join(cmd)}",
+            )
             return False
         except (subprocess.CalledProcessError, FileNotFoundError):
-            colored_log("warning", "Could not install p7zip. Hashcat extraction may fail.")
+            colored_log(
+                "warning", "Could not install p7zip. Hashcat extraction may fail."
+            )
             return False
 
 

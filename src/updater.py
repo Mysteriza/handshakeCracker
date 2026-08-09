@@ -1,7 +1,7 @@
 import os
-import sys
-import subprocess
 import shutil
+import subprocess
+import sys
 
 
 def is_git_installed() -> bool:
@@ -17,7 +17,13 @@ def is_git_repo(path: str) -> bool:
 def get_current_commit(cwd: str) -> str:
     """Get the current local commit hash."""
     try:
-        result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=cwd, check=True)
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            check=True,
+        )
         return result.stdout.strip()
     except subprocess.CalledProcessError:
         return ""
@@ -27,7 +33,11 @@ def get_remote_commit(cwd: str) -> str:
     """Get the latest remote commit hash for origin/main."""
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "origin/main"], capture_output=True, text=True, cwd=cwd, check=True
+            ["git", "rev-parse", "origin/main"],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            check=True,
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError:
@@ -38,7 +48,11 @@ def get_commits_behind(cwd: str) -> int:
     """Check how many commits the local branch is behind origin/main."""
     try:
         result = subprocess.run(
-            ["git", "rev-list", "HEAD..origin/main", "--count"], capture_output=True, text=True, cwd=cwd, check=True
+            ["git", "rev-list", "HEAD..origin/main", "--count"],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            check=True,
         )
         return int(result.stdout.strip())
     except (subprocess.CalledProcessError, ValueError):
@@ -48,9 +62,19 @@ def get_commits_behind(cwd: str) -> int:
 def fetch_updates(cwd: str) -> bool:
     """Run git fetch with a short timeout to fail fast if offline."""
     try:
-        subprocess.run(["git", "fetch", "origin", "main"], capture_output=True, cwd=cwd, timeout=5, check=True)
+        subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            capture_output=True,
+            cwd=cwd,
+            timeout=5,
+            check=True,
+        )
         return True
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+    except (
+        subprocess.TimeoutExpired,
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+    ):
         return False
 
 
@@ -88,7 +112,13 @@ def check_and_update() -> None:
         # Get changelog
         try:
             log_out = subprocess.run(
-                ["git", "log", f"{local_commit}..{remote_commit}", "--oneline", "--color=never"],
+                [
+                    "git",
+                    "log",
+                    f"{local_commit}..{remote_commit}",
+                    "--oneline",
+                    "--color=never",
+                ],
                 capture_output=True,
                 text=True,
                 cwd=script_dir,
@@ -104,7 +134,11 @@ def check_and_update() -> None:
         print("Applying update...")
         try:
             subprocess.run(
-                ["git", "pull", "origin", "main"], cwd=script_dir, check=True, timeout=30, capture_output=True
+                ["git", "pull", "origin", "main"],
+                cwd=script_dir,
+                check=True,
+                timeout=30,
+                capture_output=True,
             )
             print("Update successful! Restarting program...\n")
 
@@ -115,5 +149,7 @@ def check_and_update() -> None:
         except subprocess.TimeoutExpired:
             print("Update timed out. Continuing with current version...\n")
         except subprocess.CalledProcessError:
-            print("Failed to apply update. You may have local conflicts or network issues.")
+            print(
+                "Failed to apply update. You may have local conflicts or network issues."
+            )
             print("Continuing with the current version...\n")

@@ -2,10 +2,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.console import console
 from scapy.all import PcapReader
 from scapy.layers.dot11 import Dot11Beacon, Dot11ProbeResp
 from scapy.layers.eap import EAPOL_KEY
+
+from src.console import console
 
 CHECK = "OK"
 CROSS = "--"
@@ -90,10 +91,14 @@ def _row(cells: list[str], widths: list[int]) -> str:
     return "".join(parts)
 
 
-def validate_all_handshakes(file_list: list[str]) -> tuple[dict[str, ValidationResult], list[tuple[str, str]]]:
+def validate_all_handshakes(
+    file_list: list[str],
+) -> tuple[dict[str, ValidationResult], list[tuple[str, str]]]:
     if not file_list:
         return {}, []
-    console.print("\nValidating handshake files... (M1+M2 or PMKID is sufficient for validity)")
+    console.print(
+        "\nValidating handshake files... (M1+M2 or PMKID is sufficient for validity)"
+    )
 
     results = []
     for f in file_list:

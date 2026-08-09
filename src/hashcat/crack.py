@@ -1,15 +1,20 @@
-from .setup import get_hashcat_path, warmup_hashcat_kernel
-from .convert import convert_cap_to_hc22000
 import os
+import platform
+import re
+import subprocess
 import sys
 import time
-import platform
-import subprocess
-import re
-from src.console import console, colored_log, log_error, log_debug
+
+from rich.progress import (Progress, SpinnerColumn, TextColumn,
+                           TimeElapsedColumn)
+
 from src.config import HCOV_DIR, RESULTS_DIR
-from src.utils import sanitize_ssid, strip_capture_extension, lower_process_priority
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from src.console import colored_log, console, log_debug, log_error
+from src.utils import (lower_process_priority, sanitize_ssid,
+                       strip_capture_extension)
+
+from .convert import convert_cap_to_hc22000
+from .setup import get_hashcat_path, warmup_hashcat_kernel
 
 _SYSTEM = platform.system()
 HASHCAT_EXHAUSTED = "__HASHCAT_EXHAUSTED__"
@@ -42,13 +47,18 @@ def _log_hashcat_output(heading: str, lines: list[str]):
 
 
 def crack_with_hashcat(
-    hc22000_path: str, wordlist_path: str, display_essid: str, gpu_is_discrete: bool = False
+    hc22000_path: str,
+    wordlist_path: str,
+    display_essid: str,
+    gpu_is_discrete: bool = False,
 ) -> str | None:
     start_time = time.time()
     hc22000_path = os.path.abspath(hc22000_path)
     wordlist_path = os.path.abspath(wordlist_path)
     hc_exe = get_hashcat_path()
-    log_debug(f"crack_with_hashcat: start hc_exe={hc_exe!r} hc22000={hc22000_path} wordlist={wordlist_path}")
+    log_debug(
+        f"crack_with_hashcat: start hc_exe={hc_exe!r} hc22000={hc22000_path} wordlist={wordlist_path}"
+    )
     if not hc_exe:
         log_error("crack_with_hashcat: hashcat binary not found")
         return None
@@ -57,13 +67,21 @@ def crack_with_hashcat(
     potfile = os.path.join(HCOV_DIR, "hashcat.potfile")
     log_debug(f"crack_with_hashcat: potfile={potfile} hc_dir={hc_dir}")
     _log_hashcat_output(
-        "DIAG", [f"Hashcat EXE: {hc_exe}", f"hc22000: {hc22000_path}", f"wordlist: {wordlist_path}", f"CWD: {hc_dir}"]
+        "DIAG",
+        [
+            f"Hashcat EXE: {hc_exe}",
+            f"hc22000: {hc22000_path}",
+            f"wordlist: {wordlist_path}",
+            f"CWD: {hc_dir}",
+        ],
     )
     try:
         with open(hc22000_path, "r") as _f:
             content = _f.read().strip()
         _log_hashcat_output("HC22000 content", [content[:300]])
-        log_debug(f"crack_with_hashcat: hc22000 file length={len(content)} starts_with={content[:80]}")
+        log_debug(
+            f"crack_with_hashcat: hc22000 file length={len(content)} starts_with={content[:80]}"
+        )
     except Exception as e:
         log_error("Failed to read hc22000 file", e)
         return None
@@ -71,21 +89,38 @@ def crack_with_hashcat(
     log_debug("crack_with_hashcat: killing any lingering hashcat process")
     try:
         if _SYSTEM == "Windows":
-            subprocess.run(["taskkill", "/f", "/im", "hashcat.exe"], capture_output=True, timeout=10)
+            subprocess.run(
+                ["taskkill", "/f", "/im", "hashcat.exe"],
+                capture_output=True,
+                timeout=10,
+            )
         else:
-            subprocess.run(["pkill", "-9", "-x", "hashcat"], capture_output=True, timeout=10)
+            subprocess.run(
+                ["pkill", "-9", "-x", "hashcat"], capture_output=True, timeout=10
+            )
     except Exception:
         pass
     workload = "4" if gpu_is_discrete else "2"
     cmd = [hc_exe, "-m", "22000", "-a", "0", "-w", workload]
     if gpu_is_discrete:
         cmd.append("-O")
-    cmd.extend(["--session", sanitize_ssid(display_essid), "--potfile-path", potfile, hc22000_path, wordlist_path])
+    cmd.extend(
+        [
+            "--session",
+            sanitize_ssid(display_essid),
+            "--potfile-path",
+            potfile,
+            hc22000_path,
+            wordlist_path,
+        ]
+    )
     cmd_str = " ".join(cmd)
     _log_hashcat_output("COMMAND", [cmd_str])
     log_debug(f"crack_with_hashcat: running command: {cmd_str}")
     potfile_before = _read_potfile(potfile)
-    log_debug(f"crack_with_hashcat: potfile had {len(potfile_before)} entries before cracking")
+    log_debug(
+        f"crack_with_hashcat: potfile had {len(potfile_before)} entries before cracking"
+    )
     messages = [
         f"Cracking {display_essid}... Initializing kernels",
         f"Cracking {display_essid}... Running",
@@ -140,27 +175,37 @@ def crack_with_hashcat(
                     progress.update(task, description=f"[cyan]{messages[1]}")
                     try:
                         lower_process_priority(proc.pid)
-                        log_debug("crack_with_hashcat: kernel init done, lowered process priority")
+                        log_debug(
+                            "crack_with_hashcat: kernel init done, lowered process priority"
+                        )
                     except Exception as e:
                         log_debug("crack_with_hashcat: failed to set priority", str(e))
         proc.wait()
         hashcat_output.append(f"[PROCESS EXIT CODE: {proc.returncode}]")
         _log_hashcat_output("HASHCAT OUTPUT", hashcat_output)
-        log_debug(f"crack_with_hashcat: process exited rc={proc.returncode} total_lines={line_count}")
+        log_debug(
+            f"crack_with_hashcat: process exited rc={proc.returncode} total_lines={line_count}"
+        )
         password = None
         potfile_after = _read_potfile(potfile)
         if potfile_after:
             _log_hashcat_output("POTFILE", [f"{len(potfile_after)} entries total"])
-            log_debug(f"crack_with_hashcat: potfile entries: {len(potfile_after)} total, {len(potfile_before)} before")
+            log_debug(
+                f"crack_with_hashcat: potfile entries: {len(potfile_after)} total, {len(potfile_before)} before"
+            )
             new_entries = potfile_after - potfile_before
             log_debug(f"crack_with_hashcat: new potfile entries: {len(new_entries)}")
             password = _extract_password_from_lines(new_entries)
             if password:
-                log_debug(f"crack_with_hashcat: password from new potfile entry: {password!r}")
+                log_debug(
+                    f"crack_with_hashcat: password from new potfile entry: {password!r}"
+                )
             if not password and (not potfile_before):
                 password = _extract_password_from_lines(potfile_after)
                 if password:
-                    log_debug(f"crack_with_hashcat: password from potfile (fallback): {password!r}")
+                    log_debug(
+                        f"crack_with_hashcat: password from potfile (fallback): {password!r}"
+                    )
                 else:
                     log_debug(
                         "crack_with_hashcat: no new potfile entries and potfile had pre-existing data — password not found"
@@ -190,11 +235,15 @@ def crack_with_hashcat(
         console.print(stats_text)
 
         if password:
-            log_debug(f"crack_with_hashcat: FOUND password={password!r} time={duration_str}")
+            log_debug(
+                f"crack_with_hashcat: FOUND password={password!r} time={duration_str}"
+            )
             console.print(f"  Password: [bold green]{password}[/bold green]")
             os.makedirs(RESULTS_DIR, exist_ok=True)
             safe_essid = sanitize_ssid(display_essid)
-            result_file = os.path.join(RESULTS_DIR, f"{safe_essid}_cracked_password.txt")
+            result_file = os.path.join(
+                RESULTS_DIR, f"{safe_essid}_cracked_password.txt"
+            )
             with open(result_file, "w") as f:
                 f.write(f"Network (ESSID): {display_essid}\n")
                 f.write(f"Wordlist Used: {os.path.basename(wordlist_path)}\n")
@@ -211,12 +260,16 @@ def crack_with_hashcat(
             console.print(f"  Saved to: {result_file}")
             return password
         if proc.returncode not in (0, 1):
-            log_debug(f"crack_with_hashcat: hashcat exited with unexpected rc={proc.returncode}")
+            log_debug(
+                f"crack_with_hashcat: hashcat exited with unexpected rc={proc.returncode}"
+            )
             _log_hashcat_output("RESULT", ["Hashcat FAILED (crash/error)"])
             log_debug("crack_with_hashcat: returning None (hashcat crashed/failed)")
             return None
         _log_hashcat_output("RESULT", ["No password found"])
-        log_debug("crack_with_hashcat: returning HASHCAT_EXHAUSTED (password not found)")
+        log_debug(
+            "crack_with_hashcat: returning HASHCAT_EXHAUSTED (password not found)"
+        )
         return HASHCAT_EXHAUSTED
     except FileNotFoundError as e:
         _log_hashcat_output("CRASH", [f"FileNotFoundError: {e}"])
@@ -260,7 +313,9 @@ def hashcat_crack_handshake(
         is_temp_file = False
     else:
         colored_log("info", "Converting .cap to hashcat format (hc22000)...")
-        hc22000_path = os.path.join(HCOV_DIR, strip_capture_extension(handshake_path) + ".hc22000")
+        hc22000_path = os.path.join(
+            HCOV_DIR, strip_capture_extension(handshake_path) + ".hc22000"
+        )
         log_debug(f"hashcat_crack_handshake: hc22000 output path: {hc22000_path}")
         if not convert_cap_to_hc22000(handshake_path, hc22000_path, packets):
             colored_log("error", "Failed to convert .cap to hc22000 format.")
@@ -271,7 +326,9 @@ def hashcat_crack_handshake(
     if not warmup_hashcat_kernel(hc22000_path):
         log_debug("hashcat_crack_handshake: warmup failed, continuing anyway")
     log_debug("hashcat_crack_handshake: conversion OK, calling crack_with_hashcat")
-    result = crack_with_hashcat(hc22000_path, wordlist_path, display_essid, gpu_is_discrete)
+    result = crack_with_hashcat(
+        hc22000_path, wordlist_path, display_essid, gpu_is_discrete
+    )
     log_debug(f"hashcat_crack_handshake: crack_with_hashcat returned {result!r}")
 
     if is_temp_file:
@@ -288,6 +345,10 @@ class HashcatBackend:
         self.gpu_is_discrete = gpu_is_discrete
         self.packets_map = packets_map or {}
 
-    def crack(self, handshake_path: str, wordlist_path: str, display_essid: str) -> str | None:
+    def crack(
+        self, handshake_path: str, wordlist_path: str, display_essid: str
+    ) -> str | None:
         packets = self.packets_map.get(handshake_path)
-        return hashcat_crack_handshake(handshake_path, wordlist_path, display_essid, self.gpu_is_discrete, packets)
+        return hashcat_crack_handshake(
+            handshake_path, wordlist_path, display_essid, self.gpu_is_discrete, packets
+        )

@@ -1,17 +1,18 @@
+import atexit
+import math
 import os
 import re
+import subprocess
 import sys
-import time
-import math
-import atexit
 import tempfile
 import threading
-import subprocess
+import time
 
-from src.console import console, log_error
-from src.config import RESULTS_DIR
-from src.utils import sanitize_ssid, strip_capture_extension, lower_process_priority
 from src.backend import CrackerBackend
+from src.config import RESULTS_DIR
+from src.console import console, log_error
+from src.utils import (lower_process_priority, sanitize_ssid,
+                       strip_capture_extension)
 
 
 def get_already_cracked_essids() -> set[str]:
@@ -25,7 +26,9 @@ def get_already_cracked_essids() -> set[str]:
                 essid_part = filename.replace("_cracked_password.txt", "")
                 cracked_essids.add(essid_part)
     except Exception as e:
-        log_error(f"Error scanning results directory {RESULTS_DIR} for cracked ESSIDs.", e)
+        log_error(
+            f"Error scanning results directory {RESULTS_DIR} for cracked ESSIDs.", e
+        )
 
     return cracked_essids
 
@@ -118,7 +121,9 @@ def _crack_worker(chunk_path: str, handshake_path: str, results: list):
 
 
 class AircrackBackend(CrackerBackend):
-    def crack(self, handshake_path: str, wordlist_path: str, display_essid: str) -> str | None:
+    def crack(
+        self, handshake_path: str, wordlist_path: str, display_essid: str
+    ) -> str | None:
         chunk_paths: list[str] = []
         try:
             messages = [
@@ -154,7 +159,9 @@ class AircrackBackend(CrackerBackend):
                         with open(cp, "wb") as cf:
                             bytes_read = 0
                             while bytes_read < chunk_size_bytes:
-                                chunk = f.read(min(1024 * 1024, chunk_size_bytes - bytes_read))
+                                chunk = f.read(
+                                    min(1024 * 1024, chunk_size_bytes - bytes_read)
+                                )
                                 if not chunk:
                                     break
                                 bytes_read += len(chunk)
@@ -198,13 +205,17 @@ class AircrackBackend(CrackerBackend):
                     t.join(timeout=2)
 
             if not found_results:
-                console.print("  Password not found in wordlist. Try a larger wordlist.")
+                console.print(
+                    "  Password not found in wordlist. Try a larger wordlist."
+                )
                 return None
 
             result_stdout = found_results[0]
             match = re.search(r"KEY FOUND!\s*\[\s*(.*?)\s*\]", result_stdout)
             if not match:
-                console.print("  Password not found in wordlist. Try a larger wordlist.")
+                console.print(
+                    "  Password not found in wordlist. Try a larger wordlist."
+                )
                 return None
 
             password = match.group(1)
@@ -217,7 +228,9 @@ class AircrackBackend(CrackerBackend):
             if essid_match and essid_match.group(1).strip() not in ("", "<hidden>"):
                 final_essid = essid_match.group(1).strip()
             elif final_essid in ("<hidden>",) or final_essid.endswith("_from_filename"):
-                final_essid = strip_capture_extension(handshake_path) + "_determined_final"
+                final_essid = (
+                    strip_capture_extension(handshake_path) + "_determined_final"
+                )
 
             _clear_status()
             console.print(f"  Password: {password}")
@@ -225,7 +238,9 @@ class AircrackBackend(CrackerBackend):
 
             os.makedirs(RESULTS_DIR, exist_ok=True)
             safe_essid = sanitize_ssid(final_essid)
-            result_file = os.path.join(RESULTS_DIR, f"{safe_essid}_cracked_password.txt")
+            result_file = os.path.join(
+                RESULTS_DIR, f"{safe_essid}_cracked_password.txt"
+            )
             with open(result_file, "w") as f:
                 f.write(f"Network (ESSID): {final_essid}\n")
                 f.write(f"Handshake File: {os.path.basename(handshake_path)}\n")

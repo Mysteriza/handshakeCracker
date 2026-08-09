@@ -1,11 +1,13 @@
 import os
-import sys
-import time
-import tempfile
 import platform
 import subprocess
-from src.console import console, colored_log, log_error, log_debug
-from src.config import BIN_DIR, HASHCAT_VERSION, HASHCAT_URL, HCOV_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME, HASHCAT_SHA256
+import sys
+import tempfile
+import time
+
+from src.config import (BIN_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME,
+                        HASHCAT_SHA256, HASHCAT_URL, HASHCAT_VERSION, HCOV_DIR)
+from src.console import colored_log, console, log_debug, log_error
 from src.utils import download_with_progress
 
 _SYSTEM = platform.system()
@@ -58,7 +60,9 @@ def _extract_archive(archive: str, dest: str) -> bool:
                 colored_log("info", "Downloading 7-Zip standalone extractor...")
                 log_debug("_extract_archive: downloading 7zr.exe")
 
-                download_with_progress("https://www.7-zip.org/a/7zr.exe", sz, "Downloading 7zr")
+                download_with_progress(
+                    "https://www.7-zip.org/a/7zr.exe", sz, "Downloading 7zr"
+                )
             extractor = [sz, "x", archive, f"-o{dest}", "-y"]
             extractor_name = "7zr"
         else:
@@ -71,7 +75,9 @@ def _extract_archive(archive: str, dest: str) -> bool:
             log_debug(f"_extract_archive: {extractor[0]} stderr", r.stderr[:500])
         return ok
     except FileNotFoundError:
-        log_error("7z not found. Install it: sudo apt-get install p7zip-full  (or  brew install p7zip on macOS)")
+        log_error(
+            "7z not found. Install it: sudo apt-get install p7zip-full  (or  brew install p7zip on macOS)"
+        )
         return False
     except Exception as e:
         log_debug(f"_extract_archive: {extractor_name} exception", str(e))
@@ -90,7 +96,9 @@ def ensure_hashcat() -> bool:
     tmp_path = None
     try:
         local_archive = os.path.join(root, DEPS_DIR, HASHCAT_ARCHIVE_NAME)
-        log_debug(f"ensure_hashcat: checking local archive: {local_archive} exists={os.path.isfile(local_archive)}")
+        log_debug(
+            f"ensure_hashcat: checking local archive: {local_archive} exists={os.path.isfile(local_archive)}"
+        )
         if os.path.isfile(local_archive):
             colored_log("info", "Found local hashcat archive, extracting...")
             ok = _extract_archive(local_archive, dest_dir)
@@ -104,7 +112,9 @@ def ensure_hashcat() -> bool:
         tmp_path = tmp.name
         tmp.close()
         log_debug(f"ensure_hashcat: temp download path: {tmp_path}")
-        if not download_with_progress(HASHCAT_URL, tmp_path, "Downloading hashcat", HASHCAT_SHA256):
+        if not download_with_progress(
+            HASHCAT_URL, tmp_path, "Downloading hashcat", HASHCAT_SHA256
+        ):
             log_error("ensure_hashcat: download failed")
             return False
         log_debug("ensure_hashcat: download OK, extracting")
@@ -166,13 +176,32 @@ def warmup_hashcat_kernel(hc22000_path: str | None = None) -> bool:
     with open(dummy_wordlist, "w") as f:
         f.write("testpassword\n")
     potfile = os.path.abspath(os.path.join(HCOV_DIR, "_warmup.potfile"))
-    cmd = [hc_exe, "-m", "22000", "-a", "0", "-w", "1", "--potfile-path", potfile, warmup_hash, dummy_wordlist]
+    cmd = [
+        hc_exe,
+        "-m",
+        "22000",
+        "-a",
+        "0",
+        "-w",
+        "1",
+        "--potfile-path",
+        potfile,
+        warmup_hash,
+        dummy_wordlist,
+    ]
     cleanup_files.append(potfile)
     try:
-        log_debug("warmup_hashcat_kernel: no kernel cache found, running first-time compilation")
-        console.rule("[bold yellow]GPU Kernel Compilation (First Run)[/bold yellow]", style="yellow")
+        log_debug(
+            "warmup_hashcat_kernel: no kernel cache found, running first-time compilation"
+        )
+        console.rule(
+            "[bold yellow]GPU Kernel Compilation (First Run)[/bold yellow]",
+            style="yellow",
+        )
         colored_log("info", "Compiling GPU kernel for WPA/WPA2 cracking...")
-        console.print("  [dim]This one-time step prepares your GPU for faster cracking.[/dim]")
+        console.print(
+            "  [dim]This one-time step prepares your GPU for faster cracking.[/dim]"
+        )
         console.print("  [dim]Time: ~30–90 seconds depending on GPU and driver.[/dim]")
         console.print("")
         start = time.time()
@@ -208,14 +237,18 @@ def warmup_hashcat_kernel(hc22000_path: str | None = None) -> bool:
             line_str = line.rstrip("\n\r")
             output_lines.append(line_str)
             if line_str.startswith("* Device #"):
-                device_name = line_str.split(",")[0].replace("* Device #1: ", "").strip()
+                device_name = (
+                    line_str.split(",")[0].replace("* Device #1: ", "").strip()
+                )
         try:
             proc.wait(timeout=300)
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
             log_debug("warmup_hashcat_kernel: timed out after 300s, process killed")
-            colored_log("warning", "GPU kernel compilation timed out (>5 min). Skipping warmup.")
+            colored_log(
+                "warning", "GPU kernel compilation timed out (>5 min). Skipping warmup."
+            )
             return False
         finally:
             _spin_stop.set()
@@ -223,7 +256,9 @@ def warmup_hashcat_kernel(hc22000_path: str | None = None) -> bool:
             sys.stdout.write("\r" + " " * 40 + "\r")
             sys.stdout.flush()
         elapsed = time.time() - start
-        log_debug(f"warmup_hashcat_kernel: finished in {elapsed:.2f}s (rc={proc.returncode})")
+        log_debug(
+            f"warmup_hashcat_kernel: finished in {elapsed:.2f}s (rc={proc.returncode})"
+        )
         console.print("")
         kernel_cached = _kernel_cache_exists(hc_dir)
         if kernel_cached:
@@ -232,7 +267,10 @@ def warmup_hashcat_kernel(hc22000_path: str | None = None) -> bool:
                 f"GPU kernel ready{(' on ' + device_name if device_name else '')} ({int(elapsed)}s). Cached for next run.",
             )
         else:
-            colored_log("warning", "GPU kernel compilation skipped — will use hashcat with default kernels.")
+            colored_log(
+                "warning",
+                "GPU kernel compilation skipped — will use hashcat with default kernels.",
+            )
         console.rule(style="yellow")
         return kernel_cached
     except Exception as e:

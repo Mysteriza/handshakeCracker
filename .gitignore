@@ -12,3 +12,5 @@ hashcat-*.zip
 hashcat-*.7z
 /kernels//logs/
 *.md
+wifi-wordlist.txt
+*.etag

@@ -1,4 +1,4 @@
-from .crack import HashcatBackend, HASHCAT_EXHAUSTED
-from .setup import ensure_hashcat, add_bin_to_path
+from .crack import HASHCAT_EXHAUSTED, HashcatBackend
+from .setup import add_bin_to_path, ensure_hashcat
 
 __all__ = ["HashcatBackend", "HASHCAT_EXHAUSTED", "ensure_hashcat", "add_bin_to_path"]

@@ -3,11 +3,18 @@
 import platform
 import subprocess
 
-from src.console import log_error, log_debug
-
+from src.console import log_debug, log_error
 
 _KNOWN_DISCRETE = ["rtx", "gtx", "quadro", "tesla", "rx", "firepro", "pro wx"]
-_SKIP = ["intel", "microsoft", "basic display", "vmware", "virtualbox", "parsec", "remote"]
+_SKIP = [
+    "intel",
+    "microsoft",
+    "basic display",
+    "vmware",
+    "virtualbox",
+    "parsec",
+    "remote",
+]
 
 
 def _get_gpu_list_powershell() -> list[dict]:
@@ -46,7 +53,9 @@ def _get_gpu_list_powershell() -> list[dict]:
             except ValueError:
                 ram_bytes = 0
             gpus.append({"name": name, "ram_bytes": ram_bytes})
-            log_debug(f'GPU detection: found "{name}" (VRAM: {ram_bytes / (1024**3):.2f} GB)')
+            log_debug(
+                f'GPU detection: found "{name}" (VRAM: {ram_bytes / (1024**3):.2f} GB)'
+            )
     return gpus
 
 
@@ -114,22 +123,36 @@ def detect_gpu() -> tuple[str | None, bool]:
             for gpu in gpus:
                 low = gpu["name"].lower()
                 if not any(x in low for x in _SKIP):
-                    log_debug(f'GPU detection: selected integrated (fallback) "{gpu["name"]}"')
+                    log_debug(
+                        f'GPU detection: selected integrated (fallback) "{gpu["name"]}"'
+                    )
                     return gpu["name"], False
 
             if gpus:
                 return gpus[0]["name"], False
 
         elif system == "Linux":
-            r = subprocess.run(["lspci", "-vnn"], capture_output=True, text=True, check=False, timeout=5)
+            r = subprocess.run(
+                ["lspci", "-vnn"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
             log_debug(f"GPU detection (lspci):\n{r.stdout.strip()[:500]}")
             for line in r.stdout.splitlines():
                 low = line.lower()
                 if any(kw in low for kw in ["vga", "3d", "display"]):
                     is_discrete = False
-                    if any(x in low for x in _KNOWN_DISCRETE) or "nvidia" in low or "geforce" in low:
+                    if (
+                        any(x in low for x in _KNOWN_DISCRETE)
+                        or "nvidia" in low
+                        or "geforce" in low
+                    ):
                         is_discrete = True
-                    log_debug(f'GPU detection: selected "{line.strip()}", discrete={is_discrete}')
+                    log_debug(
+                        f'GPU detection: selected "{line.strip()}", discrete={is_discrete}'
+                    )
                     return line.strip(), is_discrete
 
     except Exception as e:

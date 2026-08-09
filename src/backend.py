@@ -1,5 +1,10 @@
-from typing import Protocol, Optional
+from typing import Optional, Protocol
 
 
 class CrackerBackend(Protocol):
-    def crack(self, handshake_path: str, wordlist_path: str, display_essid: str) -> Optional[str]: ...
+    def check_availability(self) -> bool:
+        pass
+
+    def crack(
+        self, handshake_path: str, wordlist_path: str, display_essid: str
+    ) -> Optional[str]: ...
