@@ -55,9 +55,23 @@ def count_wordlist_lines(path: str) -> int:
 
 def scan_default_directory(directory_path: str) -> list[str]:
     found_files = []
+    
+    # Try to restore first if directory is empty or missing
+    try:
+        from src.backup import restore_from_backup, create_safe_backup
+        restore_from_backup(directory_path)
+    except Exception:
+        pass
+
     if not os.path.exists(directory_path):
         colored_log("error", f"Default directory {directory_path} not found.")
         return []
+
+    # Backup the files silently if they exist
+    try:
+        create_safe_backup(directory_path)
+    except Exception:
+        pass
 
     colored_log("info", f"Scanning {directory_path}/ for .cap/.pcap/.hc22000 files...")
     # NOTE: Only scans the DIRECT directory, NOT sub-folders.
