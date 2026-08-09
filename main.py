@@ -65,10 +65,8 @@ def main():
     except AttributeError:
         pass
 
-    try:
-        subprocess.run("cls" if os.name == "nt" else "clear", shell=True)
-    except Exception:
-        pass
+    # Clear screen securely using ANSI escape codes
+    print("\033[H\033[J", end="", flush=True)
 
     try:
         setup = auto_setup()
