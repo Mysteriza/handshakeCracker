@@ -310,18 +310,21 @@ def hashcat_crack_handshake(
     if handshake_path.lower().endswith(".hc22000"):
         colored_log("info", "File is already .hc22000 format, skipping conversion.")
         hc22000_path = handshake_path
-        is_temp_file = False
     else:
-        colored_log("info", "Converting .cap to hashcat format (hc22000)...")
         hc22000_path = os.path.join(
             HCOV_DIR, strip_capture_extension(handshake_path) + ".hc22000"
         )
-        log_debug(f"hashcat_crack_handshake: hc22000 output path: {hc22000_path}")
-        if not convert_cap_to_hc22000(handshake_path, hc22000_path, packets):
-            colored_log("error", "Failed to convert .cap to hc22000 format.")
-            log_debug("hashcat_crack_handshake: convert_cap_to_hc22000 returned False")
-            return None
-        is_temp_file = True
+        # Check if we already have a cached conversion!
+        if os.path.exists(hc22000_path) and os.path.getsize(hc22000_path) > 0:
+            colored_log("info", "Found cached .hc22000 format, skipping conversion.")
+            log_debug(f"hashcat_crack_handshake: using cached hc22000: {hc22000_path}")
+        else:
+            colored_log("info", "Converting .cap to hashcat format (hc22000)...")
+            log_debug(f"hashcat_crack_handshake: hc22000 output path: {hc22000_path}")
+            if not convert_cap_to_hc22000(handshake_path, hc22000_path, packets):
+                colored_log("error", "Failed to convert .cap to hc22000 format.")
+                log_debug("hashcat_crack_handshake: convert_cap_to_hc22000 returned False")
+                return None
 
     if not warmup_hashcat_kernel(hc22000_path):
         log_debug("hashcat_crack_handshake: warmup failed, continuing anyway")
@@ -331,12 +334,8 @@ def hashcat_crack_handshake(
     )
     log_debug(f"hashcat_crack_handshake: crack_with_hashcat returned {result!r}")
 
-    if is_temp_file:
-        try:
-            os.remove(hc22000_path)
-            log_debug(f"hashcat_crack_handshake: cleaned up temp file {hc22000_path}")
-        except OSError:
-            pass
+    # Note: We intentionally do NOT delete the hc22000_path anymore.
+    # It is kept in the cache permanently to speed up future cracks.
     return result
 
 
