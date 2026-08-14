@@ -5,7 +5,7 @@
 Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Windows + Linux), fully automatic setup using **Hashcat**.
 
 ## Screenshots
-<img width="1005" height="896" alt="22-07-2026_15-08" src="https://github.com/user-attachments/assets/43b236e3-3ba4-4525-afbe-1a5e0b28940d" />
+<img width="1016" height="962" alt="15-08-2026_05-27" src="https://github.com/user-attachments/assets/986765fe-2ad7-4390-b804-817f739969d6" />
 
 ## Features
 
