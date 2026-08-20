@@ -206,6 +206,7 @@ def ensure_wordlist() -> bool:
     )
 
     import urllib.request
+    import urllib.error
 
     colored_log("info", "Checking for wordlist updates...")
     try:
@@ -233,6 +234,12 @@ def ensure_wordlist() -> bool:
                     f.write(remote_etag)
             return True
 
+    except urllib.error.URLError as e:
+        colored_log("warning", "No internet connection detected (or GitHub is unreachable).")
+        log_debug(f"ensure_wordlist network error: {e}")
+        if os.path.exists(wordlist_path):
+            colored_log("info", "Continuing in offline mode with existing wordlist.")
+            return True
     except Exception as e:
         colored_log("warning", f"Failed to check for wordlist updates: {e}")
         # Fallback to checking if file exists
