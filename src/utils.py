@@ -166,7 +166,6 @@ def extract_local_zip(
 
 
 def download_wordlist(url: str, dest: str) -> bool:
-    colored_log("info", "Wordlist not found. Downloading from GitHub...")
     result = download_with_progress(url, dest, "Downloading wordlist")
     if result:
         colored_log("success", f"Wordlist ready: {dest}")

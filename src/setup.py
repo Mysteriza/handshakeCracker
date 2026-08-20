@@ -198,12 +198,12 @@ def ensure_directories() -> bool:
 
 
 def ensure_wordlist() -> bool:
-    wordlist_path = os.path.join(
+    wordlist_path = os.path.normpath(os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_NAME
-    )
-    etag_path = os.path.join(
+    ))
+    etag_path = os.path.normpath(os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_ETAG_FILE
-    )
+    ))
 
     import urllib.request
     import urllib.error
