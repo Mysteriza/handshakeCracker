@@ -18,3 +18,5 @@ wifi-wordlist.txt
 crackstation*.txt
 rockyou.txt
 *.dict
+
+*.lst
