@@ -40,41 +40,24 @@ def lower_process_priority(pid: int):
             pass
 
 
+def format_file_size(size_bytes: int) -> str:
+    mb = size_bytes / (1024 * 1024)
+    if mb >= 1024:
+        gb = mb / 1024
+        return f"{gb:,.1f} GB"
+    return f"{mb:,.1f} MB"
+
+
 def sanitize_ssid(ssid: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", ssid).strip().replace(" ", "_")
-
-
-def count_wordlist_lines(path: str) -> int:
-    """Estimate lines in a wordlist file instantly based on file size (O(1))."""
-    try:
-        size_bytes = os.path.getsize(path)
-        # Average password length in wordlists is ~9-11 bytes including newline.
-        # This provides an instant estimation without reading the file into RAM.
-        return max(1, size_bytes // 10)
-    except OSError:
-        return 0
 
 
 def scan_default_directory(directory_path: str) -> list[str]:
     found_files = []
 
-    # Try to restore first if directory is empty or missing
-    try:
-        from src.backup import create_safe_backup, restore_from_backup
-
-        restore_from_backup(directory_path)
-    except Exception:
-        pass
-
     if not os.path.exists(directory_path):
         colored_log("error", f"Default directory {directory_path} not found.")
         return []
-
-    # Backup the files silently if they exist
-    try:
-        create_safe_backup(directory_path)
-    except Exception:
-        pass
 
     colored_log("info", f"Scanning {directory_path}/ for .cap/.pcap/.hc22000 files...")
     # NOTE: Only scans the DIRECT directory, NOT sub-folders.
@@ -286,22 +269,28 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
             except (EOFError, KeyboardInterrupt):
                 colored_log("warning", "Falling back to default wordlist.")
                 return default_path
-
-        lines = count_wordlist_lines(custom_path)
-        if lines:
-            size_gb = os.path.getsize(custom_path) / (1024**3)
-            colored_log(
-                "info",
-                f"Custom wordlist attached: ~{lines:,} passwords estimated ({size_gb:.2f} GB).".replace(",", "."),
-            )
-
+        if os.path.exists(custom_path):
+            name = os.path.basename(custom_path)
+            try:
+                size_bytes = os.path.getsize(custom_path)
+                colored_log(
+                    "success",
+                    f"Wordlist loaded: {name} | Path: {custom_path} ({format_file_size(size_bytes)})",
+                )
+            except OSError:
+                colored_log("success", f"Wordlist loaded: {name} | Path: {custom_path}")
         return custom_path
 
-    # Default: count lines if available
-    lines = count_wordlist_lines(default_path)
-    if lines:
-        size_gb = os.path.getsize(default_path) / (1024**3)
-        colored_log("info", f"~{lines:,} passwords estimated ({size_gb:.2f} GB).".replace(",", "."))
+    # Default wordlist
+    name = os.path.basename(default_path)
+    try:
+        size_bytes = os.path.getsize(default_path)
+        colored_log(
+            "success",
+            f"Wordlist loaded: {name} | Path: {default_path} ({format_file_size(size_bytes)})",
+        )
+    except OSError:
+        colored_log("success", f"Wordlist loaded: {name} | Path: {default_path}")
 
     return default_path
 

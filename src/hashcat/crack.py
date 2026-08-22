@@ -323,7 +323,9 @@ def hashcat_crack_handshake(
             log_debug(f"hashcat_crack_handshake: hc22000 output path: {hc22000_path}")
             if not convert_cap_to_hc22000(handshake_path, hc22000_path, packets):
                 colored_log("error", "Failed to convert .cap to hc22000 format.")
-                log_debug("hashcat_crack_handshake: convert_cap_to_hc22000 returned False")
+                log_debug(
+                    "hashcat_crack_handshake: convert_cap_to_hc22000 returned False"
+                )
                 return None
 
     if not warmup_hashcat_kernel(hc22000_path):

@@ -198,15 +198,17 @@ def ensure_directories() -> bool:
 
 
 def ensure_wordlist() -> bool:
-    wordlist_path = os.path.normpath(os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_NAME
-    ))
-    etag_path = os.path.normpath(os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_ETAG_FILE
-    ))
+    wordlist_path = os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_NAME)
+    )
+    etag_path = os.path.normpath(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_ETAG_FILE
+        )
+    )
 
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     colored_log("info", "Checking for wordlist updates...")
     try:
@@ -235,7 +237,9 @@ def ensure_wordlist() -> bool:
             return True
 
     except urllib.error.URLError as e:
-        colored_log("warning", "No internet connection detected (or GitHub is unreachable).")
+        colored_log(
+            "warning", "No internet connection detected (or GitHub is unreachable)."
+        )
         log_debug(f"ensure_wordlist network error: {e}")
         if os.path.exists(wordlist_path):
             colored_log("info", "Continuing in offline mode with existing wordlist.")
