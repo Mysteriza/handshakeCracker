@@ -14,3 +14,7 @@ hashcat-*.7z
 *.md
 wifi-wordlist.txt
 *.etag
+# Third-party Wordlists
+crackstation*.txt
+rockyou.txt
+*.dict

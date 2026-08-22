@@ -9,13 +9,15 @@ Audit WPA/WPA2 networks by cracking pre-captured handshakes. Cross-platform (Win
 
 ## Features
 
-- **Curated wordlist** — ~8.5M real-world passwords (96 MB), filtered to 8–63 chars with no duplicates, sorted for optimal cracking
-- **Custom wordlist** — Choose between the default wordlist or your own `.txt` file at runtime
+- **Curated wordlist** — ~8.5M real-world passwords (88.7 MB), filtered to 8–63 chars with no duplicates, sorted for optimal cracking
+- **Custom wordlist** — Choose between the default wordlist or your own `.txt` file at runtime (supports 100GB+ lists)
+- **Instant Loading (O(1))** — Massive wordlists are natively streamed to the cracking engine with zero RAM overhead and instant startup times
 - **GPU acceleration** — Hashcat (GPU) is the primary cracker; auto-falls back to aircrack-ng (CPU) only on failure
 - **Smart fallback** — If hashcat exhausts all passwords without a match, skips aircrack-ng instead of wasting time
 - **One-time kernel warmup** — First run compiles GPU kernels with live spinner (30-90s), cached for subsequent runs
-- **Auto-Update** — Automatically checks GitHub for new commits on startup and applies them transparently without external dependencies
-- **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches the curated 8.5M wordlist on first run
+- **Smart HC22000 Caching** — Permanent caching of converted handshakes prevents redundant `.pcap` to `.hc22000` re-conversions
+- **Auto-Update & Offline Mode** — Automatically checks GitHub for wordlist updates via HTTP ETag on startup; gracefully falls back to offline mode if the internet is unavailable
+- **Zero-config** — Auto-installs Python packages, downloads aircrack-ng/hashcat, and fetches the curated wordlist on first run
 - **Cross-platform** — Windows auto-downloads binaries; Linux auto-installs via apt-get
 - **EAPOL validation** — Scapy-based M1/M2/M3/M4 table rejects invalid captures before cracking
 - **Batch processing** — Queue multiple .cap/.pcap files from `handshakes/`
@@ -84,6 +86,13 @@ cd handshakeCracker
 
 The program auto-installs all dependencies on first run. No manual setup required.
 
+## Alternative Wordlists
+
+By default, the program downloads a curated 8.5M password list. If you need a significantly larger and more comprehensive dictionary (and have the storage space), we highly recommend the **CrackStation Wordlist**:
+
+- **[CrackStation's Password Cracking Dictionary](https://crackstation.net/crackstation-wordlist-password-cracking-dictionary.htm)** (15GB Uncompressed, ~1.5 Billion words).
+- You can place this file directly in the project root directory; the `.gitignore` has been pre-configured to ignore `crackstation*.txt` to prevent accidental GitHub uploads.
+
 ## Usage
 
 1. Place `.cap`/`.pcap` files in `handshakes/`
@@ -99,7 +108,7 @@ The program auto-installs all dependencies on first run. No manual setup require
      Choose [1/2] (default: 1):
    ```
    - **Option 1** — Uses the auto-downloaded default wordlist (8.5M curated passwords)
-   - **Option 2** — Enter a path to your own wordlist file (TAB completion supported)
+   - **Option 2** — Enter a path to your own wordlist file (TAB completion supported, handles massive lists instantly)
 4. The program validates handshakes, cracks them **(GPU via hashcat by default, CPU via aircrack-ng only if hashcat fails)**, and saves results to `cracked_results/`
 
 ### Manual file entry
