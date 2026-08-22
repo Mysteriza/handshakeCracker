@@ -36,7 +36,6 @@ def get_already_cracked_essids() -> set[str]:
 _SPINNER = ["-", "\\", "|", "/"]
 _active_procs: list[subprocess.Popen] = []
 _active_procs_lock = threading.Lock()
-_cached_chunks: dict[str, list[str]] = {}
 
 
 def _terminate_all():
@@ -55,20 +54,8 @@ def _terminate_all():
 
 
 def _cleanup_chunks():
-    for paths in _cached_chunks.values():
-        if not paths:
-            continue
-        chunk_dir = os.path.dirname(paths[0])
-        for p in paths:
-            try:
-                os.remove(p)
-            except OSError:
-                pass
-        try:
-            os.rmdir(chunk_dir)
-        except OSError:
-            pass
-    _cached_chunks.clear()
+    # No longer needed since chunking was removed
+    pass
 
 
 atexit.register(_terminate_all)
@@ -124,7 +111,6 @@ class AircrackBackend(CrackerBackend):
     def crack(
         self, handshake_path: str, wordlist_path: str, display_essid: str
     ) -> str | None:
-        chunk_paths: list[str] = []
         try:
             messages = [
                 f"Cracking {display_essid}... Initializing packet analyzer...",
@@ -143,48 +129,17 @@ class AircrackBackend(CrackerBackend):
             _write_status(_SPINNER[spin_idx % 4], messages[msg_idx])
             spin_idx += 1
 
-            wl_size = os.path.getsize(wordlist_path)
             found_results = []
 
-            if wordlist_path not in _cached_chunks:
-                n = max(1, (os.cpu_count() or 2) // 2)
-                chunk_dir = tempfile.mkdtemp(prefix="hs_crack_")
-                paths = []
-
-                chunk_size_bytes = math.ceil(wl_size / n)
-
-                with open(wordlist_path, "rb") as f:
-                    for i in range(n):
-                        cp = os.path.join(chunk_dir, f"chunk_{i}.txt")
-                        with open(cp, "wb") as cf:
-                            bytes_read = 0
-                            while bytes_read < chunk_size_bytes:
-                                chunk = f.read(
-                                    min(1024 * 1024, chunk_size_bytes - bytes_read)
-                                )
-                                if not chunk:
-                                    break
-                                bytes_read += len(chunk)
-                                cf.write(chunk)
-
-                            # Read until the next newline so we don't break passwords
-                            if bytes_read > 0 and chunk and not chunk.endswith(b"\n"):
-                                remainder = f.readline()
-                                cf.write(remainder)
-                        paths.append(cp)
-                _cached_chunks[wordlist_path] = paths
-
-            chunk_paths = _cached_chunks[wordlist_path]
-            threads = []
-
-            for i, cp in enumerate(chunk_paths):
-                t = threading.Thread(
-                    target=_crack_worker,
-                    args=(cp, handshake_path, found_results),
-                    daemon=True,
-                )
-                t.start()
-                threads.append(t)
+            # We pass the original wordlist_path directly to aircrack-ng.
+            # Aircrack-ng streams the file natively without loading it entirely into RAM.
+            t = threading.Thread(
+                target=_crack_worker,
+                args=(wordlist_path, handshake_path, found_results),
+                daemon=True,
+            )
+            t.start()
+            threads = [t]
 
             while len(found_results) == 0 and any(t.is_alive() for t in threads):
                 iter_count += 1

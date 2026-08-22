@@ -45,12 +45,12 @@ def sanitize_ssid(ssid: str) -> str:
 
 
 def count_wordlist_lines(path: str) -> int:
-    """Count lines in a wordlist file efficiently (1 MB buffer chunks)."""
+    """Estimate lines in a wordlist file instantly based on file size (O(1))."""
     try:
-        with open(path, "rb") as f:
-            return sum(
-                chunk.count(b"\n") for chunk in iter(lambda: f.read(1024 * 1024), b"")
-            )
+        size_bytes = os.path.getsize(path)
+        # Average password length in wordlists is ~9-11 bytes including newline.
+        # This provides an instant estimation without reading the file into RAM.
+        return max(1, size_bytes // 10)
     except OSError:
         return 0
 
@@ -289,9 +289,10 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
 
         lines = count_wordlist_lines(custom_path)
         if lines:
+            size_gb = os.path.getsize(custom_path) / (1024**3)
             colored_log(
                 "info",
-                f"Custom wordlist loaded: {lines:,} passwords.".replace(",", "."),
+                f"Custom wordlist attached: ~{lines:,} passwords estimated ({size_gb:.2f} GB).".replace(",", "."),
             )
 
         return custom_path
@@ -299,7 +300,8 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
     # Default: count lines if available
     lines = count_wordlist_lines(default_path)
     if lines:
-        colored_log("info", f"{lines:,} passwords loaded.".replace(",", "."))
+        size_gb = os.path.getsize(default_path) / (1024**3)
+        colored_log("info", f"~{lines:,} passwords estimated ({size_gb:.2f} GB).".replace(",", "."))
 
     return default_path
 
