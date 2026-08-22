@@ -238,18 +238,55 @@ class WordlistValidator(Validator):
 
 
 def choose_wordlist(session: PromptSession, default_path: str) -> str:
-    """Prompt user to pick default or custom wordlist. Returns chosen path."""
+    """Prompt user to pick a discovered wordlist or custom path. Returns chosen path."""
     console.print("\n[bold cyan]Wordlist Selection[/bold cyan]")
-    console.print(f"  1. Use default wordlist ({os.path.basename(default_path)})")
-    console.print("  2. Use custom wordlist file")
 
+    root_dir = os.path.dirname(os.path.abspath(default_path))
+    discovered_wordlists = []
+
+    # Exclude common non-wordlist text files
+    ignore_files = ["requirements.txt"]
+
+    if os.path.exists(root_dir):
+        for filename in os.listdir(root_dir):
+            if filename.endswith((".txt", ".lst", ".dict")):
+                if filename in ignore_files or filename.startswith("debug_log"):
+                    continue
+                path = os.path.join(root_dir, filename)
+                if os.path.isfile(path):
+                    discovered_wordlists.append(path)
+
+    # Sort them so default_path is always first if it exists
+    if default_path in discovered_wordlists:
+        discovered_wordlists.remove(default_path)
+        discovered_wordlists.insert(0, default_path)
+    elif os.path.isfile(default_path):
+        discovered_wordlists.insert(0, default_path)
+
+    for i, path in enumerate(discovered_wordlists, 1):
+        name = os.path.basename(path)
+        try:
+            size_bytes = os.path.getsize(path)
+            size_str = format_file_size(size_bytes)
+            console.print(f"  {i}. Use {name} ({size_str})")
+        except OSError:
+            console.print(f"  {i}. Use {name}")
+
+    custom_idx = len(discovered_wordlists) + 1
+    console.print(f"  {custom_idx}. Use custom wordlist file")
+
+    valid_choices = [str(i) for i in range(1, custom_idx + 1)]
     while True:
-        choice = input("  Choose [1/2] (default: 1): ").strip()
-        if choice in ("", "1", "2"):
+        choice = input(f"  Choose [1-{custom_idx}] (default: 1): ").strip()
+        if choice == "":
+            choice = "1"
+        if choice in valid_choices:
             break
-        colored_log("error", "Invalid choice. Enter 1 for default or 2 for custom.")
+        colored_log(
+            "error", f"Invalid choice. Enter a number between 1 and {custom_idx}."
+        )
 
-    if choice == "2":
+    if choice == str(custom_idx):
         console.print(
             "  Example: C:\\Users\\You\\wordlist.txt  or  /home/user/wordlist.txt"
         )
@@ -267,32 +304,31 @@ def choose_wordlist(session: PromptSession, default_path: str) -> str:
             except ValidationError as e:
                 colored_log("error", str(e))
             except (EOFError, KeyboardInterrupt):
-                colored_log("warning", "Falling back to default wordlist.")
-                return default_path
-        if os.path.exists(custom_path):
-            name = os.path.basename(custom_path)
-            try:
-                size_bytes = os.path.getsize(custom_path)
-                colored_log(
-                    "success",
-                    f"Wordlist loaded: {name} | Path: {custom_path} ({format_file_size(size_bytes)})",
-                )
-            except OSError:
-                colored_log("success", f"Wordlist loaded: {name} | Path: {custom_path}")
-        return custom_path
+                if discovered_wordlists:
+                    fallback = discovered_wordlists[0]
+                    colored_log(
+                        "warning", f"Falling back to {os.path.basename(fallback)}."
+                    )
+                    return fallback
+                else:
+                    colored_log("warning", "Falling back to default wordlist.")
+                    return default_path
+        final_path = custom_path
+    else:
+        final_path = discovered_wordlists[int(choice) - 1]
 
-    # Default wordlist
-    name = os.path.basename(default_path)
-    try:
-        size_bytes = os.path.getsize(default_path)
-        colored_log(
-            "success",
-            f"Wordlist loaded: {name} | Path: {default_path} ({format_file_size(size_bytes)})",
-        )
-    except OSError:
-        colored_log("success", f"Wordlist loaded: {name} | Path: {default_path}")
+    if os.path.exists(final_path):
+        name = os.path.basename(final_path)
+        try:
+            size_bytes = os.path.getsize(final_path)
+            colored_log(
+                "success",
+                f"Wordlist loaded: {name} | Path: {final_path} ({format_file_size(size_bytes)})",
+            )
+        except OSError:
+            colored_log("success", f"Wordlist loaded: {name} | Path: {final_path}")
 
-    return default_path
+    return final_path
 
 
 def get_manual_handshake_paths(session: PromptSession) -> list[str]:
