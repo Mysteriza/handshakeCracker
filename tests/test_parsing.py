@@ -1,6 +1,6 @@
 from src.hashcat.crack import (
     _extract_password_from_lines,
-    _lookup_potfile_password,
+    _parse_show_output,
 )
 from src.hashcat.convert import _format_mac
 
@@ -54,18 +54,21 @@ def test_extract_password_boundary_63_chars():
     assert _extract_password_from_lines(lines) == "x" * 63
 
 
-def test_lookup_potfile_matching_hash():
-    lines = {
-        "WPA*02*otherhash:passwordlain",
-        "WPA*02*abc123:mypassword1",
-    }
-    assert _lookup_potfile_password(lines, "WPA*02*abc123") == "mypassword1"
+def test_parse_show_output_hit():
+    out = "WPA*02*abc123*def:mypassword1\n"
+    assert _parse_show_output(out) == "mypassword1"
 
 
-def test_lookup_potfile_no_matching_hash():
-    lines = {"WPA*02*otherhash:passwordlain"}
-    assert _lookup_potfile_password(lines, "WPA*02*abc123") is None
+def test_parse_show_output_real_22000_format():
+    out = "1f16665656837e2a4e391638570e89c4:68f543f3a778:b0dcef8f670e:Kosan bu nata:immodium\n"
+    assert _parse_show_output(out) == "immodium"
 
 
-def test_lookup_potfile_empty():
-    assert _lookup_potfile_password(set(), "WPA*02*abc123") is None
+def test_parse_show_output_empty():
+    assert _parse_show_output("") is None
+    assert _parse_show_output("  \n# comment\n") is None
+
+
+def test_parse_show_output_bad_lengths():
+    assert _parse_show_output("WPA*02*x:short\n") is None
+    assert _parse_show_output("WPA*02*x:" + "y" * 64 + "\n") is None

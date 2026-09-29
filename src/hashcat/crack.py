@@ -29,27 +29,19 @@ def _extract_password_from_lines(lines: set[str]) -> str | None:
     return None
 
 
-def _get_hash_key(hc22000_path: str) -> str | None:
-    """Return the hc22000 hash string (first line) used as potfile key."""
-    try:
-        with open(hc22000_path, "r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    return line
-    except OSError:
-        pass
-    return None
+def _parse_show_output(output: str) -> str | None:
+    """Parse `hashcat --show` output (mic:ap:sta:essid:password per line).
 
-
-def _lookup_potfile_password(lines: set[str], hash_key: str) -> str | None:
-    """Find password for one specific hash; never return another network's."""
-    prefix = hash_key + ":"
-    for pot_line in lines:
-        if pot_line.startswith(prefix):
-            pw_candidate = pot_line[pot_line.rfind(":") + 1 :].strip()
-            if 8 <= len(pw_candidate) <= 63:
-                return pw_candidate
+    The password is after the LAST colon (ESSID itself may contain colons).
+    Returns None when nothing is cracked yet.
+    """
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        pw_candidate = line[line.rfind(":") + 1 :].strip()
+        if 8 <= len(pw_candidate) <= 63:
+            return pw_candidate
     return None
 
 
@@ -168,22 +160,34 @@ def crack_with_hashcat(
     log_debug(
         f"crack_with_hashcat: potfile had {len(potfile_before)} entries before cracking"
     )
-    hash_key = _get_hash_key(hc22000_path)
-    log_debug(f"crack_with_hashcat: hash_key present={bool(hash_key)}")
-    if hash_key:
-        pre_password = _lookup_potfile_password(potfile_before, hash_key)
-        if pre_password:
-            log_debug("crack_with_hashcat: ALREADY-CRACKED (potfile hit before run)")
-            colored_log(
-                "warning",
-                "Already cracked before (found in potfile) — restoring result, skipping hashcat.",
-            )
-            result_file = _save_result_file(
-                display_essid, wordlist_path, pre_password, "00:00", "0"
-            )
-            console.print(f"  Password: [bold green]{pre_password}[/bold green]")
-            console.print(f"  Saved to: {result_file}")
-            return pre_password
+    # Pre-check via `hashcat --show` (authoritative: no potfile-format guessing).
+    # If this hash was cracked in a previous run but the result file is gone,
+    # restore the result instead of re-cracking and misreporting the outcome.
+    try:
+        show = subprocess.run(
+            [hc_exe, "-m", "22000", "--show",
+             "--potfile-path", potfile, hc22000_path],
+            capture_output=True, text=True, timeout=60, cwd=hc_dir,
+        )
+        pre_password = _parse_show_output(show.stdout or "")
+        log_debug(
+            f"crack_with_hashcat: --show rc={show.returncode} hit={bool(pre_password)}"
+        )
+    except Exception as e:
+        log_debug(f"crack_with_hashcat: --show pre-check failed: {e}")
+        pre_password = None
+    if pre_password:
+        log_debug("crack_with_hashcat: ALREADY-CRACKED (potfile hit before run)")
+        colored_log(
+            "warning",
+            "Already cracked before (found in potfile) — restoring result, skipping hashcat.",
+        )
+        result_file = _save_result_file(
+            display_essid, wordlist_path, pre_password, "00:00", "0"
+        )
+        console.print(f"  Password: [bold green]{pre_password}[/bold green]")
+        console.print(f"  Saved to: {result_file}")
+        return pre_password
     messages = [
         f"Cracking {display_essid}... Initializing kernels",
         f"Cracking {display_essid}... Running",
@@ -258,25 +262,18 @@ def crack_with_hashcat(
             )
             new_entries = potfile_after - potfile_before
             log_debug(f"crack_with_hashcat: new potfile entries: {len(new_entries)}")
-            if hash_key:
-                password = _lookup_potfile_password(new_entries, hash_key)
-            else:
-                password = _extract_password_from_lines(new_entries)
+            # New entries can only come from this run (single-hash file),
+            # so an unkeyed read here is correct. Pre-existing entries are
+            # handled by the --show pre-check above, never here.
+            password = _extract_password_from_lines(new_entries)
             if password:
                 log_debug(
                     f"crack_with_hashcat: password from new potfile entry: {password!r}"
                 )
-            elif hash_key:
-                pre_existing = _lookup_potfile_password(potfile_before, hash_key)
-                if pre_existing:
-                    log_debug(
-                        "crack_with_hashcat: ALREADY-CRACKED (hash in pre-existing potfile, no new entry)"
-                    )
-                    password = pre_existing
-                else:
-                    log_debug(
-                        "crack_with_hashcat: hash not in potfile — genuinely not found"
-                    )
+            else:
+                log_debug(
+                    "crack_with_hashcat: no new potfile entries — genuinely not found"
+                )
         else:
             log_debug("crack_with_hashcat: potfile is empty or does not exist")
         elapsed = time.time() - start_time
