@@ -12,6 +12,7 @@ hashcat-*.zip
 hashcat-*.7z
 /kernels//logs/
 *.md
+!README.md
 wifi-wordlist.txt
 *.etag
 # Third-party Wordlists

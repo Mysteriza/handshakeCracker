@@ -1,6 +1,8 @@
 import os
 import platform
 import subprocess
+import urllib.error
+import urllib.request
 
 from rich.panel import Panel
 from rich.text import Text
@@ -206,9 +208,6 @@ def ensure_wordlist() -> bool:
             os.path.dirname(os.path.abspath(__file__)), "..", WORDLIST_ETAG_FILE
         )
     )
-
-    import urllib.error
-    import urllib.request
 
     colored_log("info", "Checking for wordlist updates...")
     try:

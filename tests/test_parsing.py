@@ -1,4 +1,7 @@
-from src.hashcat.crack import _extract_password_from_lines
+from src.hashcat.crack import (
+    _extract_password_from_lines,
+    _lookup_potfile_password,
+)
 from src.hashcat.convert import _format_mac
 
 
@@ -49,3 +52,20 @@ def test_extract_password_boundary_8_chars():
 def test_extract_password_boundary_63_chars():
     lines = {"hash:" + "x" * 63}
     assert _extract_password_from_lines(lines) == "x" * 63
+
+
+def test_lookup_potfile_matching_hash():
+    lines = {
+        "WPA*02*otherhash:passwordlain",
+        "WPA*02*abc123:mypassword1",
+    }
+    assert _lookup_potfile_password(lines, "WPA*02*abc123") == "mypassword1"
+
+
+def test_lookup_potfile_no_matching_hash():
+    lines = {"WPA*02*otherhash:passwordlain"}
+    assert _lookup_potfile_password(lines, "WPA*02*abc123") is None
+
+
+def test_lookup_potfile_empty():
+    assert _lookup_potfile_password(set(), "WPA*02*abc123") is None

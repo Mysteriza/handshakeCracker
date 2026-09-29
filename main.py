@@ -4,7 +4,6 @@
 # ruff: noqa: E402
 import os
 import signal
-import subprocess
 import sys
 
 # ── Phase 0: Auto-Update Check ─────────────────────────────────────────

@@ -29,6 +29,53 @@ def _extract_password_from_lines(lines: set[str]) -> str | None:
     return None
 
 
+def _get_hash_key(hc22000_path: str) -> str | None:
+    """Return the hc22000 hash string (first line) used as potfile key."""
+    try:
+        with open(hc22000_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    return line
+    except OSError:
+        pass
+    return None
+
+
+def _lookup_potfile_password(lines: set[str], hash_key: str) -> str | None:
+    """Find password for one specific hash; never return another network's."""
+    prefix = hash_key + ":"
+    for pot_line in lines:
+        if pot_line.startswith(prefix):
+            pw_candidate = pot_line[pot_line.rfind(":") + 1 :].strip()
+            if 8 <= len(pw_candidate) <= 63:
+                return pw_candidate
+    return None
+
+
+def _save_result_file(
+    display_essid: str, wordlist_path: str, password: str, duration_str: str,
+    avg_speed_str: str,
+) -> str:
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    safe_essid = sanitize_ssid(display_essid)
+    result_file = os.path.join(RESULTS_DIR, f"{safe_essid}_cracked_password.txt")
+    with open(result_file, "w") as f:
+        f.write(f"Network (ESSID): {display_essid}\n")
+        f.write(f"Wordlist Used: {os.path.basename(wordlist_path)}\n")
+        f.write(f"Password Found: {password}\n")
+        f.write(f"Time Taken: {duration_str}\n\n")
+        f.write("--- Cracking Statistics ---\n")
+        f.write(f"Total Duration : {duration_str}\n")
+        f.write(f"Avg Speed      : {avg_speed_str} passwords/s\n")
+    if sys.platform != "win32":
+        try:
+            os.chmod(result_file, 0o600)
+        except OSError:
+            pass
+    return result_file
+
+
 def _read_potfile(path: str) -> set[str]:
     if not os.path.exists(path):
         return set()
@@ -121,6 +168,22 @@ def crack_with_hashcat(
     log_debug(
         f"crack_with_hashcat: potfile had {len(potfile_before)} entries before cracking"
     )
+    hash_key = _get_hash_key(hc22000_path)
+    log_debug(f"crack_with_hashcat: hash_key present={bool(hash_key)}")
+    if hash_key:
+        pre_password = _lookup_potfile_password(potfile_before, hash_key)
+        if pre_password:
+            log_debug("crack_with_hashcat: ALREADY-CRACKED (potfile hit before run)")
+            colored_log(
+                "warning",
+                "Already cracked before (found in potfile) — restoring result, skipping hashcat.",
+            )
+            result_file = _save_result_file(
+                display_essid, wordlist_path, pre_password, "00:00", "0"
+            )
+            console.print(f"  Password: [bold green]{pre_password}[/bold green]")
+            console.print(f"  Saved to: {result_file}")
+            return pre_password
     messages = [
         f"Cracking {display_essid}... Initializing kernels",
         f"Cracking {display_essid}... Running",
@@ -195,20 +258,24 @@ def crack_with_hashcat(
             )
             new_entries = potfile_after - potfile_before
             log_debug(f"crack_with_hashcat: new potfile entries: {len(new_entries)}")
-            password = _extract_password_from_lines(new_entries)
+            if hash_key:
+                password = _lookup_potfile_password(new_entries, hash_key)
+            else:
+                password = _extract_password_from_lines(new_entries)
             if password:
                 log_debug(
                     f"crack_with_hashcat: password from new potfile entry: {password!r}"
                 )
-            if not password and (not potfile_before):
-                password = _extract_password_from_lines(potfile_after)
-                if password:
+            elif hash_key:
+                pre_existing = _lookup_potfile_password(potfile_before, hash_key)
+                if pre_existing:
                     log_debug(
-                        f"crack_with_hashcat: password from potfile (fallback): {password!r}"
+                        "crack_with_hashcat: ALREADY-CRACKED (hash in pre-existing potfile, no new entry)"
                     )
+                    password = pre_existing
                 else:
                     log_debug(
-                        "crack_with_hashcat: no new potfile entries and potfile had pre-existing data — password not found"
+                        "crack_with_hashcat: hash not in potfile — genuinely not found"
                     )
         else:
             log_debug("crack_with_hashcat: potfile is empty or does not exist")
@@ -239,24 +306,9 @@ def crack_with_hashcat(
                 f"crack_with_hashcat: FOUND password={password!r} time={duration_str}"
             )
             console.print(f"  Password: [bold green]{password}[/bold green]")
-            os.makedirs(RESULTS_DIR, exist_ok=True)
-            safe_essid = sanitize_ssid(display_essid)
-            result_file = os.path.join(
-                RESULTS_DIR, f"{safe_essid}_cracked_password.txt"
+            result_file = _save_result_file(
+                display_essid, wordlist_path, password, duration_str, avg_speed_str
             )
-            with open(result_file, "w") as f:
-                f.write(f"Network (ESSID): {display_essid}\n")
-                f.write(f"Wordlist Used: {os.path.basename(wordlist_path)}\n")
-                f.write(f"Password Found: {password}\n")
-                f.write(f"Time Taken: {duration_str}\n\n")
-                f.write("--- Cracking Statistics ---\n")
-                f.write(f"Total Duration : {duration_str}\n")
-                f.write(f"Avg Speed      : {avg_speed_str} passwords/s\n")
-            if sys.platform != "win32":
-                try:
-                    os.chmod(result_file, 0o600)
-                except OSError:
-                    pass
             console.print(f"  Saved to: {result_file}")
             return password
         if proc.returncode not in (0, 1):

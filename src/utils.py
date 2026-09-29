@@ -1,14 +1,20 @@
 # ruff: noqa: E402
 import ctypes
+import hashlib
 import os
 import platform
 import re
 import sys
 import tempfile
+import time
 import urllib.request
 import zipfile
 
-from src.console import colored_log, log_error
+from prompt_toolkit.completion import PathCompleter
+from prompt_toolkit.shortcuts import PromptSession
+from prompt_toolkit.validation import ValidationError, Validator
+
+from src.console import colored_log, console, log_error
 
 
 def strip_capture_extension(path: str) -> str:
@@ -71,9 +77,6 @@ def scan_default_directory(directory_path: str) -> list[str]:
     except OSError as e:
         log_error(f"Failed to scan {directory_path}", e)
     return found_files
-
-
-import hashlib
 
 
 def download_with_progress(
@@ -200,14 +203,6 @@ def download_and_extract_zip(
 
 
 # ── Recovered UI Functions ──
-
-import time
-
-from prompt_toolkit.completion import PathCompleter
-from prompt_toolkit.shortcuts import PromptSession
-from prompt_toolkit.validation import ValidationError, Validator
-
-from src.console import console
 
 
 class PcapValidator(Validator):
