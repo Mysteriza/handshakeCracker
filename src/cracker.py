@@ -9,8 +9,8 @@ import time
 from src.backend import CrackerBackend
 from src.config import RESULTS_DIR
 from src.console import console, log_error
-from src.utils import (lower_process_priority, sanitize_ssid,
-                       strip_capture_extension)
+from src.results import save_cracked_result
+from src.utils import lower_process_priority, strip_capture_extension
 
 
 def get_already_cracked_essids() -> set[str]:
@@ -20,9 +20,22 @@ def get_already_cracked_essids() -> set[str]:
 
     try:
         for filename in os.listdir(RESULTS_DIR):
-            if filename.endswith("_cracked_password.txt"):
-                essid_part = filename.replace("_cracked_password.txt", "")
-                cracked_essids.add(essid_part)
+            if not filename.endswith("_cracked_password.txt"):
+                continue
+            essid_part = filename.replace("_cracked_password.txt", "")
+            cracked_essids.add(essid_part)
+            cracked_essids.add(f"file:{essid_part.lower()}")
+            result_path = os.path.join(RESULTS_DIR, filename)
+            try:
+                with open(result_path, encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        if line.startswith("Network (ESSID):"):
+                            real = line.split(":", 1)[1].strip().lower()
+                            if real:
+                                cracked_essids.add(f"essid:{real}")
+                            break
+            except OSError:
+                pass
     except Exception as e:
         log_error(
             f"Error scanning results directory {RESULTS_DIR} for cracked ESSIDs.", e
@@ -51,13 +64,7 @@ def _terminate_all():
         _active_procs.clear()
 
 
-def _cleanup_chunks():
-    # No longer needed since chunking was removed
-    pass
-
-
 atexit.register(_terminate_all)
-atexit.register(_cleanup_chunks)
 
 
 def _write_status(spin_char: str, msg: str):
@@ -70,10 +77,10 @@ def _clear_status():
     sys.stdout.flush()
 
 
-def _crack_worker(chunk_path: str, handshake_path: str, results: list):
+def _crack_worker(wordlist_path: str, handshake_path: str, results: list):
     try:
         proc = subprocess.Popen(
-            ["aircrack-ng", "-w", chunk_path, handshake_path],
+            ["aircrack-ng", "-w", wordlist_path, handshake_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -189,23 +196,10 @@ class AircrackBackend(CrackerBackend):
             console.print(f"  Password: {password}")
             console.print(f"  Time: {time_str}")
 
-            os.makedirs(RESULTS_DIR, exist_ok=True)
-            safe_essid = sanitize_ssid(final_essid)
-            result_file = os.path.join(
-                RESULTS_DIR, f"{safe_essid}_cracked_password.txt"
+            result_file = save_cracked_result(
+                final_essid, wordlist_path, password, time_str,
+                handshake_path=handshake_path,
             )
-            with open(result_file, "w") as f:
-                f.write(f"Network (ESSID): {final_essid}\n")
-                f.write(f"Handshake File: {os.path.basename(handshake_path)}\n")
-                f.write(f"Wordlist Used: {os.path.basename(wordlist_path)}\n")
-                f.write(f"Password Found: {password}\n")
-                f.write(f"Time Taken: {time_str}\n")
-
-            if sys.platform != "win32":
-                try:
-                    os.chmod(result_file, 0o600)
-                except OSError:
-                    pass
 
             console.print(f"  Saved to: {result_file}")
             return password

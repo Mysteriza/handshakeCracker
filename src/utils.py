@@ -1,20 +1,47 @@
-# ruff: noqa: E402
+"""Small pure helpers + backwards-compatible re-exports.
+
+Heavy I/O lives in src.io, prompts in src.ui. This module stays so existing
+`from src.utils import ...` imports keep working.
+"""
+
+from __future__ import annotations
+
 import ctypes
-import hashlib
 import os
 import platform
 import re
-import sys
-import tempfile
-import time
-import urllib.request
-import zipfile
 
-from prompt_toolkit.completion import PathCompleter
-from prompt_toolkit.shortcuts import PromptSession
-from prompt_toolkit.validation import ValidationError, Validator
+from src.console import colored_log, log_error
+from src.io import (
+    download_and_extract_zip,
+    download_with_progress,
+    download_wordlist,
+    extract_local_zip,
+    format_file_size,
+)
+from src.ui import (
+    PcapValidator,
+    WordlistValidator,
+    choose_wordlist,
+    get_manual_handshake_paths,
+)
 
-from src.console import colored_log, console, log_error
+__all__ = [
+    "strip_capture_extension",
+    "lower_process_priority",
+    "format_file_size",
+    "sanitize_ssid",
+    "scan_default_directory",
+    "find_exe_in_path",
+    "download_with_progress",
+    "extract_local_zip",
+    "download_wordlist",
+    "download_and_extract_zip",
+    "PcapValidator",
+    "WordlistValidator",
+    "choose_wordlist",
+    "get_manual_handshake_paths",
+]
 
 
 def strip_capture_extension(path: str) -> str:
@@ -33,10 +60,10 @@ def lower_process_priority(pid: int):
     system = platform.system()
     if system == "Windows":
         try:
-            # 0x1F0FFF = PROCESS_ALL_ACCESS, 0x00004000 = IDLE_PRIORITY_CLASS
             handle = ctypes.windll.kernel32.OpenProcess(0x1F0FFF, False, pid)
-            ctypes.windll.kernel32.SetPriorityClass(handle, 0x00004000)
-            ctypes.windll.kernel32.CloseHandle(handle)
+            if handle:
+                ctypes.windll.kernel32.SetPriorityClass(handle, 0x00004000)
+                ctypes.windll.kernel32.CloseHandle(handle)
         except Exception:
             pass
     else:
@@ -46,16 +73,11 @@ def lower_process_priority(pid: int):
             pass
 
 
-def format_file_size(size_bytes: int) -> str:
-    mb = size_bytes / (1024 * 1024)
-    if mb >= 1024:
-        gb = mb / 1024
-        return f"{gb:,.1f} GB"
-    return f"{mb:,.1f} MB"
+_SSID_ILLEGAL = re.compile(r'[\\/*?:"<>|]')
 
 
 def sanitize_ssid(ssid: str) -> str:
-    return re.sub(r'[\\/*?:"<>|]', "", ssid).strip().replace(" ", "_")
+    return _SSID_ILLEGAL.sub("", ssid).strip().replace(" ", "_")
 
 
 def scan_default_directory(directory_path: str) -> list[str]:
@@ -66,300 +88,21 @@ def scan_default_directory(directory_path: str) -> list[str]:
         return []
 
     colored_log("info", f"Scanning {directory_path}/ for .cap/.pcap/.hc22000 files...")
-    # NOTE: Only scans the DIRECT directory, NOT sub-folders.
-    # Handshake files in sub-folders are intentionally ignored.
     try:
-        for entry in os.scandir(directory_path):
-            if entry.is_file() and entry.name.lower().endswith(
-                (".cap", ".pcap", ".hc22000")
-            ):
-                found_files.append(entry.path)
+        with os.scandir(directory_path) as it:
+            for entry in it:
+                if entry.is_file() and entry.name.lower().endswith(
+                    (".cap", ".pcap", ".hc22000")
+                ):
+                    found_files.append(entry.path)
     except OSError as e:
         log_error(f"Failed to scan {directory_path}", e)
     return found_files
 
 
-def download_with_progress(
-    url: str, dest: str, label: str = "Downloading", expected_sha256: str | None = None
-) -> bool:
-    try:
-
-        def report(block_count, block_size, total_size):
-            downloaded = block_count * block_size / (1024 * 1024)
-            total = total_size / (1024 * 1024)
-            sys.stdout.write(f"\r{label}: {downloaded:.1f}MB / {total:.1f}MB")
-            sys.stdout.flush()
-
-        urllib.request.urlretrieve(url, dest, report)
-        sys.stdout.write("\n")
-
-        if expected_sha256:
-            sys.stdout.write(f"Verifying checksum for {label}...\n")
-            hasher = hashlib.sha256()
-            with open(dest, "rb") as f:
-                for chunk in iter(lambda: f.read(4096), b""):
-                    hasher.update(chunk)
-            actual_sha256 = hasher.hexdigest().upper()
-            if actual_sha256 != expected_sha256.upper():
-                colored_log(
-                    "error",
-                    f"Checksum verification failed for {label}! Expected {expected_sha256}, got {actual_sha256}.",
-                )
-                os.unlink(dest)
-                return False
-            colored_log("success", "Checksum verified successfully.")
-
-        return True
-    except KeyboardInterrupt:
-        sys.stdout.write("\n")
-        colored_log("warning", f"{label} interrupted by user.")
-        return False
-    except Exception as e:
-        log_error(f"Failed to download {url}", e)
-        return False
-
-
-def extract_local_zip(
-    zip_path: str, extract_to: str, subdir: str | None = None
-) -> bool:
-    try:
-        colored_log("info", f"Extracting {os.path.basename(zip_path)}...")
-        os.makedirs(extract_to, exist_ok=True)
-
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            for member in zf.namelist():
-                if subdir and not member.startswith(subdir):
-                    continue
-                rel_path = member[len(subdir) :].lstrip("/") if subdir else member
-                if not rel_path:
-                    continue
-                target = os.path.join(extract_to, rel_path)
-                if member.endswith("/"):
-                    os.makedirs(target, exist_ok=True)
-                else:
-                    os.makedirs(os.path.dirname(target), exist_ok=True)
-                    with zf.open(member) as src, open(target, "wb") as dst:
-                        dst.write(src.read())
-
-        colored_log("success", f"Extracted '{os.path.basename(zip_path)}'.")
-        return True
-    except KeyboardInterrupt:
-        colored_log("warning", "Extraction interrupted by user.")
-        return False
-    except Exception as e:
-        log_error(f"Failed to extract {zip_path}", e)
-        return False
-
-
-def download_wordlist(url: str, dest: str) -> bool:
-    result = download_with_progress(url, dest, "Downloading wordlist")
-    if result:
-        colored_log("success", f"Wordlist ready: {dest}")
-        return True
-    # Clean up partial on interrupt/failure
-    if os.path.exists(dest):
-        try:
-            os.remove(dest)
-        except OSError:
-            pass
-    colored_log("error", "Failed to download wordlist. Check your internet connection.")
-    return False
-
-
-def download_and_extract_zip(
-    url: str,
-    extract_to: str,
-    subdir: str | None = None,
-    expected_sha256: str | None = None,
-) -> bool:
-    tmp_path = None
-    try:
-        colored_log("info", "Downloading aircrack-ng for Windows...")
-        colored_log(
-            "info", "The aircrack-ng server can be slow; this may take a few minutes."
-        )
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        if not download_with_progress(
-            url, tmp_path, "Downloading aircrack-ng", expected_sha256
-        ):
-            return False
-
-        colored_log("info", "Extracting...")
-        return extract_local_zip(tmp_path, extract_to, subdir)
-
-    except Exception as e:
-        log_error("Failed to download/extract aircrack-ng", e)
-        colored_log(
-            "error", "Failed to set up aircrack-ng. Check your internet connection."
-        )
-        return False
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        elif tmp_path:
-            pass
-
-
-# ── Recovered UI Functions ──
-
-
-class PcapValidator(Validator):
-    def validate(self, document):
-        text = document.text
-        if text.lower() in ("q", "done"):
-            return
-        if not os.path.exists(text):
-            raise ValidationError(
-                message=f"File not found: {text}", cursor_position=len(text)
-            )
-        if not (text.lower().endswith(".cap") or text.lower().endswith(".pcap")):
-            raise ValidationError(
-                message=f"Not a .cap or .pcap file: {text}",
-                cursor_position=len(text),
-            )
-
-
-class WordlistValidator(Validator):
-    def validate(self, document):
-        text = document.text.strip().strip("\"'")
-        if not text:
-            raise ValidationError(message="Path cannot be empty.", cursor_position=0)
-        if not os.path.isfile(text):
-            raise ValidationError(
-                message=f"File not found: {text}", cursor_position=len(text)
-            )
-
-
-def choose_wordlist(session: PromptSession, default_path: str) -> str:
-    """Prompt user to pick a discovered wordlist or custom path. Returns chosen path."""
-    console.print("\n[bold cyan]Wordlist Selection[/bold cyan]")
-
-    root_dir = os.path.dirname(os.path.abspath(default_path))
-    discovered_wordlists = []
-
-    # Exclude common non-wordlist text files
-    ignore_files = ["requirements.txt"]
-
-    if os.path.exists(root_dir):
-        for filename in os.listdir(root_dir):
-            if filename.endswith((".txt", ".lst", ".dict")):
-                if filename in ignore_files or filename.startswith("debug_log"):
-                    continue
-                path = os.path.join(root_dir, filename)
-                if os.path.isfile(path):
-                    discovered_wordlists.append(path)
-
-    # Sort them so default_path is always first if it exists
-    if default_path in discovered_wordlists:
-        discovered_wordlists.remove(default_path)
-        discovered_wordlists.insert(0, default_path)
-    elif os.path.isfile(default_path):
-        discovered_wordlists.insert(0, default_path)
-
-    for i, path in enumerate(discovered_wordlists, 1):
-        name = os.path.basename(path)
-        try:
-            size_bytes = os.path.getsize(path)
-            size_str = format_file_size(size_bytes)
-            console.print(f"  {i}. Use {name} ({size_str})")
-        except OSError:
-            console.print(f"  {i}. Use {name}")
-
-    custom_idx = len(discovered_wordlists) + 1
-    console.print(f"  {custom_idx}. Use custom wordlist file")
-
-    valid_choices = [str(i) for i in range(1, custom_idx + 1)]
-    while True:
-        choice = input(f"  Choose [1-{custom_idx}] (default: 1): ").strip()
-        if choice == "":
-            choice = "1"
-        if choice in valid_choices:
-            break
-        colored_log(
-            "error", f"Invalid choice. Enter a number between 1 and {custom_idx}."
-        )
-
-    if choice == str(custom_idx):
-        console.print(
-            "  Example: C:\\Users\\You\\wordlist.txt  or  /home/user/wordlist.txt"
-        )
-        console.print("  Press TAB for auto-completion.")
-        while True:
-            try:
-                raw_path = session.prompt(
-                    "  Custom wordlist path: ",
-                    completer=PathCompleter(only_directories=False, expanduser=True),
-                    validator=WordlistValidator(),
-                    validate_while_typing=True,
-                ).strip()
-                custom_path = raw_path.strip("\"'")
-                break
-            except ValidationError as e:
-                colored_log("error", str(e))
-            except (EOFError, KeyboardInterrupt):
-                if discovered_wordlists:
-                    fallback = discovered_wordlists[0]
-                    colored_log(
-                        "warning", f"Falling back to {os.path.basename(fallback)}."
-                    )
-                    return fallback
-                else:
-                    colored_log("warning", "Falling back to default wordlist.")
-                    return default_path
-        final_path = custom_path
-    else:
-        final_path = discovered_wordlists[int(choice) - 1]
-
-    if os.path.exists(final_path):
-        name = os.path.basename(final_path)
-        try:
-            size_bytes = os.path.getsize(final_path)
-            colored_log(
-                "success",
-                f"Wordlist loaded: {name} | Path: {final_path} ({format_file_size(size_bytes)})",
-            )
-        except OSError:
-            colored_log("success", f"Wordlist loaded: {name} | Path: {final_path}")
-
-    return final_path
-
-
-def get_manual_handshake_paths(session: PromptSession) -> list[str]:
-    manual_queue = []
-    console.print("\nPlease enter handshake file paths (.cap/.pcap) one by one.")
-    console.print(
-        "(Type 'done' or 'q' to finish adding files. Use TAB for auto-completion.)"
-    )
-
-    while True:
-        try:
-            current_input_path = session.prompt(
-                f"Handshake {len(manual_queue) + 1} Path: ",
-                completer=PathCompleter(only_directories=False, expanduser=True),
-                validator=PcapValidator(),
-                validate_while_typing=True,
-            ).strip()
-
-            if current_input_path.lower() in ("done", "q"):
-                break
-
-            manual_queue.append(current_input_path)
-            colored_log(
-                "info",
-                f"Added: {os.path.basename(current_input_path)} to queue.",
-            )
-
-        except ValidationError as e:
-            colored_log("error", str(e))
-        except EOFError:
-            colored_log("info", "Exiting program.")
-            sys.exit(0)
-        except Exception as e:
-            log_error("Error during manual handshake file input.", e)
-            colored_log(
-                "error",
-                "An error occurred during file path input. Please try again or restart.",
-            )
-            time.sleep(1)
+def find_exe_in_path(exe: str) -> str | None:
+    for path in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(path.strip('"'), exe)
+        if os.path.isfile(candidate):
+            return candidate
+    return None

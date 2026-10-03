@@ -5,22 +5,14 @@ import sys
 import tempfile
 import time
 
-from src.config import (BIN_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME,
-                        HASHCAT_SHA256, HASHCAT_URL, HASHCAT_VERSION, HCOV_DIR)
+from src.config import BIN_DIR, DEPS_DIR, HASHCAT_ARCHIVE_NAME, HASHCAT_SHA256, HASHCAT_URL, HASHCAT_VERSION, HCOV_DIR
 from src.console import colored_log, console, log_debug, log_error
-from src.utils import download_with_progress
+from src.io import download_with_progress
+from src.utils import find_exe_in_path as _find_in_path
 
 _SYSTEM = platform.system()
 
 _hashcat_path_cache = None
-
-
-def _find_in_path(name: str) -> str | None:
-    for d in os.environ.get("PATH", "").split(os.pathsep):
-        p = os.path.join(d.strip('"'), name)
-        if os.path.isfile(p):
-            return p
-    return None
 
 
 def _get_root() -> str:

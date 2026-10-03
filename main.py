@@ -49,9 +49,8 @@ from src.console import colored_log, console, log_debug, log_error
 from src.cracker import AircrackBackend, get_already_cracked_essids
 from src.hashcat import HASHCAT_EXHAUSTED, HashcatBackend
 from src.setup import auto_setup
-from src.utils import (choose_wordlist, get_manual_handshake_paths,
-                       sanitize_ssid, scan_default_directory,
-                       strip_capture_extension)
+from src.ui import choose_wordlist, get_manual_handshake_paths
+from src.utils import scan_default_directory, strip_capture_extension
 from src.validator import validate_all_handshakes
 
 SEPARATOR = "-" * 60
@@ -139,11 +138,18 @@ def main():
         skipped_count = 0
 
         for p in handshake_queue:
-            safe = sanitize_ssid(strip_capture_extension(p))
-            if safe in already_cracked or safe in seen:
+            v = valid_files_map.get(p)
+            keys = []
+            if v is not None:
+                if getattr(v, "bssid", None):
+                    keys.append(f"bssid:{v.bssid.lower()}")
+                if getattr(v, "essid", None) and v.essid.strip():
+                    keys.append(f"essid:{v.essid.strip().lower()}")
+            keys.append(f"file:{strip_capture_extension(p).lower()}")
+            if any(k in already_cracked or k in seen for k in keys):
                 skipped_count += 1
             else:
-                seen.add(safe)
+                seen.update(keys)
                 deduped.append(p)
 
         if skipped_count:
@@ -160,7 +166,11 @@ def main():
             backend = AircrackBackend()
 
         for idx, handshake_path in enumerate(deduped, 1):
-            base_essid = strip_capture_extension(handshake_path)
+            v = valid_files_map.get(handshake_path)
+            real_essid = (
+                v.essid.strip() if v and getattr(v, "essid", None) else ""
+            )
+            base_essid = real_essid or strip_capture_extension(handshake_path)
 
             console.print(f"\n{SEPARATOR}")
             console.print(f"Handshake {idx}/{len(deduped)}: {base_essid}")

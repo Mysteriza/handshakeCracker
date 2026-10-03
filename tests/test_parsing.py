@@ -1,8 +1,8 @@
+from src.hashcat.convert import _format_mac
 from src.hashcat.crack import (
     _extract_password_from_lines,
     _parse_show_output,
 )
-from src.hashcat.convert import _format_mac
 
 
 def test_extract_password_valid():

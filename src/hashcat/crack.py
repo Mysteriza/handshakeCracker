@@ -2,22 +2,23 @@ import os
 import platform
 import re
 import subprocess
-import sys
 import time
 
-from rich.progress import (Progress, SpinnerColumn, TextColumn,
-                           TimeElapsedColumn)
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from src.config import HCOV_DIR, RESULTS_DIR
+from src.config import HCOV_DIR
 from src.console import colored_log, console, log_debug, log_error
-from src.utils import (lower_process_priority, sanitize_ssid,
-                       strip_capture_extension)
+from src.results import save_cracked_result
+from src.utils import lower_process_priority, sanitize_ssid, strip_capture_extension
 
 from .convert import convert_cap_to_hc22000
 from .setup import get_hashcat_path, warmup_hashcat_kernel
 
 _SYSTEM = platform.system()
 HASHCAT_EXHAUSTED = "__HASHCAT_EXHAUSTED__"
+
+_SPEED_RE = re.compile(r"Speed\.#[0-9]+.*:\s+(\d+)\s+H/s")
+_SHOW_CACHE: dict[str, tuple[float, float, str | None]] = {}
 
 
 def _extract_password_from_lines(lines: set[str]) -> str | None:
@@ -49,23 +50,10 @@ def _save_result_file(
     display_essid: str, wordlist_path: str, password: str, duration_str: str,
     avg_speed_str: str,
 ) -> str:
-    os.makedirs(RESULTS_DIR, exist_ok=True)
-    safe_essid = sanitize_ssid(display_essid)
-    result_file = os.path.join(RESULTS_DIR, f"{safe_essid}_cracked_password.txt")
-    with open(result_file, "w") as f:
-        f.write(f"Network (ESSID): {display_essid}\n")
-        f.write(f"Wordlist Used: {os.path.basename(wordlist_path)}\n")
-        f.write(f"Password Found: {password}\n")
-        f.write(f"Time Taken: {duration_str}\n\n")
-        f.write("--- Cracking Statistics ---\n")
-        f.write(f"Total Duration : {duration_str}\n")
-        f.write(f"Avg Speed      : {avg_speed_str} passwords/s\n")
-    if sys.platform != "win32":
-        try:
-            os.chmod(result_file, 0o600)
-        except OSError:
-            pass
-    return result_file
+    return save_cracked_result(
+        display_essid, wordlist_path, password, duration_str,
+        avg_speed_str=avg_speed_str,
+    )
 
 
 def _read_potfile(path: str) -> set[str]:
@@ -83,6 +71,70 @@ def _log_hashcat_output(heading: str, lines: list[str]):
     for line in lines:
         if line.strip():
             log_debug(f"  {line}")
+
+
+def _hashcat_running() -> bool:
+    try:
+        if _SYSTEM == "Windows":
+            r = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq hashcat.exe", "/FO", "CSV"],
+                capture_output=True, text=True, timeout=10,
+            )
+            return "hashcat.exe" in (r.stdout or "").lower()
+        r = subprocess.run(
+            ["pgrep", "-x", "hashcat"], capture_output=True, timeout=10
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _kill_lingering_hashcat():
+    if not _hashcat_running():
+        return
+    log_debug("crack_with_hashcat: killing lingering hashcat process")
+    try:
+        if _SYSTEM == "Windows":
+            subprocess.run(
+                ["taskkill", "/f", "/im", "hashcat.exe"],
+                capture_output=True,
+                timeout=10,
+            )
+        else:
+            subprocess.run(
+                ["pkill", "-9", "-x", "hashcat"], capture_output=True, timeout=10
+            )
+    except Exception:
+        pass
+
+
+def _show_cached(
+    hc_exe: str, hc_dir: str, potfile: str, hc22000_path: str
+) -> str | None:
+    try:
+        pot_mtime = os.path.getmtime(potfile) if os.path.exists(potfile) else -1.0
+        hc_mtime = os.path.getmtime(hc22000_path)
+    except OSError:
+        pot_mtime, hc_mtime = -1.0, -1.0
+    cached = _SHOW_CACHE.get(hc22000_path)
+    if cached and cached[0] == pot_mtime and cached[1] == hc_mtime:
+        log_debug("crack_with_hashcat: --show served from cache")
+        return cached[2]
+    try:
+        show = subprocess.run(
+            [hc_exe, "-m", "22000", "--show",
+             "--potfile-path", potfile, hc22000_path],
+            capture_output=True, text=True, timeout=60, cwd=hc_dir,
+        )
+        pre_password = _parse_show_output(show.stdout or "")
+        log_debug(
+            f"crack_with_hashcat: --show rc={show.returncode} hit={bool(pre_password)}"
+        )
+    except Exception as e:
+        log_debug(f"crack_with_hashcat: --show pre-check failed: {e}")
+        pre_password = None
+    _SHOW_CACHE[hc22000_path] = (pot_mtime, hc_mtime, pre_password)
+    return pre_password
 
 
 def crack_with_hashcat(
@@ -115,7 +167,7 @@ def crack_with_hashcat(
         ],
     )
     try:
-        with open(hc22000_path, "r") as _f:
+        with open(hc22000_path) as _f:
             content = _f.read().strip()
         _log_hashcat_output("HC22000 content", [content[:300]])
         log_debug(
@@ -125,20 +177,7 @@ def crack_with_hashcat(
         log_error("Failed to read hc22000 file", e)
         return None
 
-    log_debug("crack_with_hashcat: killing any lingering hashcat process")
-    try:
-        if _SYSTEM == "Windows":
-            subprocess.run(
-                ["taskkill", "/f", "/im", "hashcat.exe"],
-                capture_output=True,
-                timeout=10,
-            )
-        else:
-            subprocess.run(
-                ["pkill", "-9", "-x", "hashcat"], capture_output=True, timeout=10
-            )
-    except Exception:
-        pass
+    _kill_lingering_hashcat()
     workload = "4" if gpu_is_discrete else "2"
     cmd = [hc_exe, "-m", "22000", "-a", "0", "-w", workload]
     if gpu_is_discrete:
@@ -161,21 +200,9 @@ def crack_with_hashcat(
         f"crack_with_hashcat: potfile had {len(potfile_before)} entries before cracking"
     )
     # Pre-check via `hashcat --show` (authoritative: no potfile-format guessing).
-    # If this hash was cracked in a previous run but the result file is gone,
-    # restore the result instead of re-cracking and misreporting the outcome.
-    try:
-        show = subprocess.run(
-            [hc_exe, "-m", "22000", "--show",
-             "--potfile-path", potfile, hc22000_path],
-            capture_output=True, text=True, timeout=60, cwd=hc_dir,
-        )
-        pre_password = _parse_show_output(show.stdout or "")
-        log_debug(
-            f"crack_with_hashcat: --show rc={show.returncode} hit={bool(pre_password)}"
-        )
-    except Exception as e:
-        log_debug(f"crack_with_hashcat: --show pre-check failed: {e}")
-        pre_password = None
+    # Skipped when neither the potfile nor the hash file changed since the
+    # last check for this exact hash file.
+    pre_password = _show_cached(hc_exe, hc_dir, potfile, hc22000_path)
     if pre_password:
         log_debug("crack_with_hashcat: ALREADY-CRACKED (potfile hit before run)")
         colored_log(
@@ -228,7 +255,7 @@ def crack_with_hashcat(
                 line_count += 1
                 hashcat_output.append(line)
 
-                speed_match = re.search(r"Speed\.#[0-9]+.*:\s+(\d+)\s+H/s", line)
+                speed_match = _SPEED_RE.search(line)
                 if speed_match:
                     speeds.append(int(speed_match.group(1)))
 
@@ -342,6 +369,36 @@ def crack_with_hashcat(
         return None
 
 
+def _hc22000_meta_path(hc22000_path: str) -> str:
+    return hc22000_path + ".meta"
+
+
+def _hc22000_cache_valid(handshake_path: str, hc22000_path: str) -> bool:
+    try:
+        if not os.path.exists(hc22000_path) or os.path.getsize(hc22000_path) == 0:
+            return False
+        src_stat = os.stat(handshake_path)
+        meta_path = _hc22000_meta_path(hc22000_path)
+        if not os.path.exists(meta_path):
+            return False
+        with open(meta_path, encoding="utf-8") as f:
+            saved = f.read().strip().split()
+        if len(saved) != 2:
+            return False
+        return float(saved[0]) == src_stat.st_mtime and int(saved[1]) == src_stat.st_size
+    except (OSError, ValueError):
+        return False
+
+
+def _write_hc22000_meta(handshake_path: str, hc22000_path: str):
+    try:
+        src_stat = os.stat(handshake_path)
+        with open(_hc22000_meta_path(hc22000_path), "w", encoding="utf-8") as f:
+            f.write(f"{src_stat.st_mtime} {src_stat.st_size}")
+    except OSError as e:
+        log_debug(f"hashcat_crack_handshake: failed to write cache meta: {e}")
+
+
 def hashcat_crack_handshake(
     handshake_path: str,
     wordlist_path: str,
@@ -363,8 +420,7 @@ def hashcat_crack_handshake(
         hc22000_path = os.path.join(
             HCOV_DIR, strip_capture_extension(handshake_path) + ".hc22000"
         )
-        # Check if we already have a cached conversion!
-        if os.path.exists(hc22000_path) and os.path.getsize(hc22000_path) > 0:
+        if _hc22000_cache_valid(handshake_path, hc22000_path):
             colored_log("info", "Found cached .hc22000 format, skipping conversion.")
             log_debug(f"hashcat_crack_handshake: using cached hc22000: {hc22000_path}")
         else:
@@ -376,6 +432,7 @@ def hashcat_crack_handshake(
                     "hashcat_crack_handshake: convert_cap_to_hc22000 returned False"
                 )
                 return None
+            _write_hc22000_meta(handshake_path, hc22000_path)
 
     if not warmup_hashcat_kernel(hc22000_path):
         log_debug("hashcat_crack_handshake: warmup failed, continuing anyway")

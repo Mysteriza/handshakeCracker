@@ -8,22 +8,22 @@ from rich.panel import Panel
 from rich.text import Text
 
 from src.bootstrap import pip_install_requirements
-from src.config import (AIRCRACK_WIN_SHA256, AIRCRACK_WIN_URL,
-                        AIRCRACK_ZIP_NAME, BIN_DIR, DEPS_DIR, HANDSHAKES_DIR,
-                        HCOV_DIR, RESULTS_DIR, WORDLIST_ETAG_FILE,
-                        WORDLIST_NAME, WORDLIST_URL)
+from src.config import (
+    AIRCRACK_WIN_SHA256,
+    AIRCRACK_WIN_URL,
+    AIRCRACK_ZIP_NAME,
+    BIN_DIR,
+    DEPS_DIR,
+    HANDSHAKES_DIR,
+    HCOV_DIR,
+    RESULTS_DIR,
+    WORDLIST_ETAG_FILE,
+    WORDLIST_NAME,
+    WORDLIST_URL,
+)
 from src.console import colored_log, console, log_debug, log_error
-from src.utils import (download_and_extract_zip, download_wordlist,
-                       extract_local_zip)
-
-
-def _find_exe_in_path(exe: str) -> str | None:
-    for path in os.environ.get("PATH", "").split(os.pathsep):
-        candidate = os.path.join(path.strip('"'), exe)
-        if os.path.isfile(candidate):
-            return candidate
-    return None
-
+from src.io import download_and_extract_zip, download_wordlist, extract_local_zip
+from src.utils import find_exe_in_path as _find_exe_in_path
 
 _aircrack_path_cache = None
 
@@ -217,7 +217,7 @@ def ensure_wordlist() -> bool:
 
         local_etag = None
         if os.path.exists(etag_path):
-            with open(etag_path, "r") as f:
+            with open(etag_path) as f:
                 local_etag = f.read().strip()
 
         if (
@@ -324,36 +324,71 @@ def ensure_p7zip() -> bool:
             return False
 
 
+def _gpu_cache_path() -> str:
+    return os.path.join(BIN_DIR, ".gpu_cache")
+
+
+def _read_gpu_cache() -> tuple[str | None, bool] | None:
+    try:
+        path = _gpu_cache_path()
+        if not os.path.exists(path):
+            return None
+        with open(path, encoding="utf-8") as f:
+            parts = f.read().strip().split("|")
+        if len(parts) != 2:
+            return None
+        return (parts[0] or None, parts[1] == "1")
+    except OSError:
+        return None
+
+
+def _write_gpu_cache(name: str | None, is_discrete: bool):
+    try:
+        os.makedirs(BIN_DIR, exist_ok=True)
+        with open(_gpu_cache_path(), "w", encoding="utf-8") as f:
+            f.write(f"{name or ''}|{1 if is_discrete else 0}")
+    except OSError:
+        pass
+
+
+def _detect_gpu_cached() -> tuple[str | None, bool]:
+    cached = _read_gpu_cache()
+    if cached is not None:
+        log_debug(f"auto_setup: using cached GPU info: {cached[0]}")
+        return cached
+    try:
+        from src.gpu import detect_gpu
+
+        result = detect_gpu()
+        _write_gpu_cache(result[0], result[1])
+        return result
+    except Exception as e:
+        log_debug(f"auto_setup: GPU detection skipped ({e})")
+        return None, False
+
+
 def auto_setup() -> dict:
     """Run full auto-setup. Returns dict with availability flags."""
+    from concurrent.futures import ThreadPoolExecutor
+
     show_banner()
 
     ensure_python_dependencies()
-
-    aircrack_ok = ensure_aircrack()
     dirs_ok = ensure_directories()
-    wordlist_ok = ensure_wordlist()
 
-    # Hashcat setup (preferred over aircrack-ng when available)
-    ensure_p7zip()
-    try:
-        from src.hashcat import ensure_hashcat
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        fut_aircrack = pool.submit(ensure_aircrack)
+        fut_p7zip_hashcat = pool.submit(_ensure_p7zip_then_hashcat)
+        fut_wordlist = pool.submit(ensure_wordlist)
+        aircrack_ok = fut_aircrack.result()
+        hashcat_ok = fut_p7zip_hashcat.result()
+        wordlist_ok = fut_wordlist.result()
 
-        hashcat_ok = ensure_hashcat()
-    except Exception as e:
-        log_debug(f"auto_setup: hashcat setup skipped ({e})")
-        hashcat_ok = False
-
-    # GPU detection
+    # GPU detection (cached; only when hashcat is available)
     gpu_name: str | None = None
     gpu_is_discrete = False
     if hashcat_ok:
-        try:
-            from src.gpu import detect_gpu
-
-            gpu_name, gpu_is_discrete = detect_gpu()
-        except Exception as e:
-            log_debug(f"auto_setup: GPU detection skipped ({e})")
+        gpu_name, gpu_is_discrete = _detect_gpu_cached()
 
     if not aircrack_ok and not hashcat_ok:
         colored_log("error", "No cracking tool available (aircrack-ng or hashcat).")
@@ -367,3 +402,14 @@ def auto_setup() -> dict:
         "directories_ready": dirs_ok,
         "wordlist_ready": wordlist_ok,
     }
+
+
+def _ensure_p7zip_then_hashcat() -> bool:
+    ensure_p7zip()
+    try:
+        from src.hashcat import ensure_hashcat
+
+        return bool(ensure_hashcat())
+    except Exception as e:
+        log_debug(f"auto_setup: hashcat setup skipped ({e})")
+        return False

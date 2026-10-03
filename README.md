@@ -134,12 +134,21 @@ handshakeCracker/
 └── src/
     ├── config.py        # URLs, paths, constants
     ├── console.py       # Terminal helpers + error logging
-    ├── gpu.py           # GPU detection (informational)
-    ├── utils.py          # Download, extraction, utilities
-    ├── validator.py      # Scapy handshake validation
-    ├── cracker.py        # Aircrack-ng cracking (CPU)
-    ├── hashcat_cracker.py  # Hashcat cracking + .cap → .hc22000 converter
-    └── setup.py          # OS detection, auto-setup
+    ├── backend.py       # CrackerBackend protocol
+    ├── bootstrap.py     # pip install helper
+    ├── gpu.py           # GPU detection (cached)
+    ├── io.py            # Download, extraction (streaming)
+    ├── ui.py            # Wordlist prompt, manual file entry
+    ├── utils.py         # Small helpers + re-exports
+    ├── results.py       # Shared cracked-password writer
+    ├── validator.py     # Scapy handshake validation (M1-M4, PMKID)
+    ├── cracker.py       # Aircrack-ng cracking (CPU)
+    ├── updater.py       # Auto-update via git
+    ├── setup.py         # OS detection, auto-setup (parallel)
+    └── hashcat/
+        ├── convert.py   # .cap → .hc22000 (multi-BSSID)
+        ├── crack.py     # Hashcat cracking + potfile cache
+        └── setup.py     # Hashcat download + kernel warmup
 ```
 
 ## Legal

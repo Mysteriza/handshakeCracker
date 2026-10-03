@@ -19,9 +19,11 @@ def _find_writable_dir(preferred: str) -> str:
     )
 
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 WORDLIST_URL = "https://raw.githubusercontent.com/Mysteriza/WiFi-Password-Wordlist/main/wifi-wordlist.txt"
 AIRCRACK_WIN_URL = "https://download.aircrack-ng.org/aircrack-ng-1.7-win.zip"
-HANDSHAKES_DIR = "handshakes"
+HANDSHAKES_DIR = os.path.join(_PROJECT_ROOT, "handshakes")
 RESULTS_DIR = _find_writable_dir("cracked_results")
 WORDLIST_NAME = "wifi-wordlist.txt"
 WORDLIST_ETAG_FILE = "wifi-wordlist.txt.etag"

@@ -10,7 +10,10 @@ debug_log*.txt
 *.commit_hash
 hashcat-*.zip
 hashcat-*.7z
-/kernels//logs/
+aircrack-ng-*.zip
+/kernels/
+/logs/
+*.meta
 *.md
 !README.md
 wifi-wordlist.txt

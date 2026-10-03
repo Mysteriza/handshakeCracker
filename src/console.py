@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import tempfile
+from datetime import datetime
 
 from rich.console import Console
 
@@ -46,7 +47,8 @@ _logger.setLevel(logging.DEBUG)
 
 
 def _get_log_dir() -> str:
-    base = os.path.join(os.getcwd(), "logs")
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    base = os.path.join(project_root, "logs")
     try:
         os.makedirs(base, exist_ok=True)
         if os.access(base, os.W_OK):
@@ -74,8 +76,6 @@ def _cleanup_old_logs(log_dir: str, max_logs: int = 10):
     except Exception:
         pass
 
-
-from datetime import datetime
 
 _log_dir = _get_log_dir()
 _cleanup_old_logs(_log_dir, max_logs=3)
