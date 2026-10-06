@@ -135,7 +135,7 @@ def main():
 
         seen = set()
         deduped = []
-        skipped_count = 0
+        skipped: list[tuple[str, str]] = []
 
         for p in handshake_queue:
             v = valid_files_map.get(p)
@@ -146,17 +146,21 @@ def main():
                 if getattr(v, "essid", None) and v.essid.strip():
                     keys.append(f"essid:{v.essid.strip().lower()}")
             keys.append(f"file:{strip_capture_extension(p).lower()}")
-            if any(k in already_cracked or k in seen for k in keys):
-                skipped_count += 1
+            if any(k in already_cracked for k in keys):
+                skipped.append((p, "already cracked"))
+            elif any(k in seen for k in keys):
+                skipped.append((p, "duplicate"))
             else:
                 seen.update(keys)
                 deduped.append(p)
 
-        if skipped_count:
+        if skipped:
             console.print(
-                f"Skipped {skipped_count} previously cracked or duplicate "
+                f"Skipped {len(skipped)} previously cracked or duplicate "
                 f"network(s). Processing {len(deduped)} remaining."
             )
+            for path, reason in skipped:
+                console.print(f"  - {os.path.basename(path)} ({reason})")
 
         backend: CrackerBackend
         if use_hashcat:
