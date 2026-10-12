@@ -6,8 +6,19 @@ from scapy.all import PcapReader
 from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeResp
 from scapy.layers.eap import EAPOL, EAPOL_KEY
 
-from src.console import log_debug, log_error
+from src.console import colored_log, log_debug, log_error
 from src.validator import _classify_eapol
+
+
+def _m2_version_supported(m2_ek) -> bool:
+    """Hashcat mode 22000 rejects key descriptor version 0 (Salt-value
+    exception), so such networks must go through the aircrack-ng fallback
+    which reads the original capture bytes as-is."""
+    try:
+        ver = int(getattr(m2_ek, "key_descriptor_type_version", 0) or 0)
+    except Exception:
+        return False
+    return ver in (1, 2, 3)
 
 
 def _format_mac(mac) -> str:
@@ -173,9 +184,17 @@ def convert_cap_to_hc22000(
                 pass
 
     lines: list[str] = []
+    skipped_version = 0
     for bssid, g in groups.items():
         frames = g["frames"]
         if "M2" not in frames:
+            continue
+        if not _m2_version_supported(frames["M2"][EAPOL_KEY]):
+            skipped_version += 1
+            log_debug(
+                f"convert_cap_to_hc22000: skipping {bssid} "
+                "(M2 key descriptor version 0, unsupported by hashcat)"
+            )
             continue
         m2_pkt = frames["M2"]
         essid = g.get("essid") or ""
@@ -204,7 +223,14 @@ def convert_cap_to_hc22000(
             lines.append(line)
     log_debug(f"convert_cap_to_hc22000: built {len(lines)} hc22000 line(s)")
     if not lines:
-        log_debug("convert_cap_to_hc22000: M2 not found in capture")
+        if skipped_version:
+            colored_log(
+                "warning",
+                "Handshake uses key descriptor version 0, which hashcat cannot "
+                "load — trying aircrack-ng instead.",
+            )
+        else:
+            log_debug("convert_cap_to_hc22000: M2 not found in capture")
         return False
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:

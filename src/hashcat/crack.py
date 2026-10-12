@@ -20,12 +20,25 @@ HASHCAT_EXHAUSTED = "__HASHCAT_EXHAUSTED__"
 _SPEED_RE = re.compile(r"Speed\.#[0-9]+.*:\s+(\d+)\s+H/s")
 _SHOW_CACHE: dict[str, tuple[float, float, str | None]] = {}
 
+_HEX32_RE = re.compile(r"\A[0-9a-fA-F]{32}\Z")
+_HEX12_RE = re.compile(r"\A[0-9a-fA-F]{12}\Z")
+_ERROR_HINT_RE = re.compile(
+    r"exception|error|warning|failed|invalid|no hashes loaded", re.IGNORECASE
+)
+
+
+def _looks_like_error_text(candidate: str) -> bool:
+    return bool(_ERROR_HINT_RE.search(candidate))
+
 
 def _extract_password_from_lines(lines: set[str]) -> str | None:
     for pot_line in lines:
         if ":" in pot_line and (not pot_line.startswith("#")):
             pw_candidate = pot_line[pot_line.rfind(":") + 1 :].strip()
-            if 8 <= len(pw_candidate) <= 63:
+            if (
+                8 <= len(pw_candidate) <= 63
+                and not _looks_like_error_text(pw_candidate)
+            ):
                 return pw_candidate
     return None
 
@@ -34,14 +47,30 @@ def _parse_show_output(output: str) -> str | None:
     """Parse `hashcat --show` output (mic:ap:sta:essid:password per line).
 
     The password is after the LAST colon (ESSID itself may contain colons).
+    Lines that are not real crack lines (status messages, hash-load errors
+    such as "Hashfile ... : Salt-value exception") are rejected via strict
+    structural checks: at least mic:ap:sta:essid:password (5+ fields) with
+    hex MIC/AP/STA prefixes.
     Returns None when nothing is cracked yet.
     """
     for line in output.splitlines():
         line = line.strip()
         if not line or line.startswith("#") or ":" not in line:
             continue
+        parts = line.split(":")
+        if len(parts) < 5:
+            continue
+        if not (
+            _HEX32_RE.match(parts[0])
+            and _HEX12_RE.match(parts[1])
+            and _HEX12_RE.match(parts[2])
+        ):
+            continue
         pw_candidate = line[line.rfind(":") + 1 :].strip()
-        if 8 <= len(pw_candidate) <= 63:
+        if (
+            8 <= len(pw_candidate) <= 63
+            and not _looks_like_error_text(pw_candidate)
+        ):
             return pw_candidate
     return None
 

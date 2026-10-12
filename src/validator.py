@@ -74,21 +74,27 @@ def _classify_eapol(ek) -> str | None:
         return None
     nonce = _get_nonce(ek)
     mic = _get_mic(ek)
-    if nonce and _is_zero(nonce):
-        return None
+    nonce_zero = bool(nonce) and _is_zero(nonce)
     if ack and not mic_flag and not ins and not sec:
+        if nonce_zero:
+            return None
         if mic and not _is_zero(mic):
             return None
         return "M1"
     if not ack and mic_flag and not ins and not sec:
+        if nonce_zero:
+            return None
         if not mic or _is_zero(mic):
             return None
         return "M2"
     if ack and mic_flag and ins and sec:
+        if nonce_zero:
+            return None
         if not mic or _is_zero(mic):
             return None
         return "M3"
     if not ack and mic_flag and not ins and sec:
+        # M4 carries a zeroed nonce by design; only the MIC is required.
         if not mic or _is_zero(mic):
             return None
         return "M4"
